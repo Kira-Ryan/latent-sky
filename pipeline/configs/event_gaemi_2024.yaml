@@ -1,0 +1,12 @@
+# THE SHIPPED HERO — Typhoon Gaemi.
+# Stall-and-loop off Taiwan's east coast, Yilan landfall, 1,204.5 mm at Maolin.
+# Init chosen ~24 h before landfall so the hero window carries approach, loop and
+# landfall. ERA5/ARCO is final (not ERA5T) for this date — byte-stable forever (§3.6).
+init: "2024-07-24T00:00:00"
+nsteps: 20
+hero_steps: 12
+ensemble_step: 6
+ensemble_samples: 4
+seed: 20240724
+coarse_variables: [u10m, v10m, t2m, tcwv, msl]
+output: /out/gaemi_2024.zarr

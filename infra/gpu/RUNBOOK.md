@@ -1,0 +1,52 @@
+# GPU day runbook
+
+The rented-GPU session is the only unrecoverable spend in the project, so the day is
+scripted to be boring. Total inference is trivial (the shipped CorrDiff example runs in
+~21 s); the entire risk is environment friction and forgetting to turn things off —
+both of which this kit removes. Worst-case cost is bounded by the deadman at ~$9.
+
+## Before quota approval (all free, all done from the laptop)
+
+- [ ] **Quota**: `L-DB2E81BA` ("Running On-Demand G and VT instances") = 8 vCPUs,
+      us-east-1, requested. **Leave the P-instance quota at 0** — that keeps the
+      $55/hr tier physically unlaunchable.
+- [ ] **Plan eligibility**: CloudFront → Manage Plan shows the flat-rate subscribe
+      control. If it does not, stop and revisit Architecture.md §9.3 — the cost design
+      changes.
+- [ ] **Image built**: `docker build -t latentsky-forecast:0.17.0 pipeline/`
+      (needs ~25 GB free disk for the NVIDIA base — check first). Then the models
+      variant: `docker build --build-arg BAKE_MODELS=1 -t latentsky-forecast:0.17.0-models pipeline/`.
+- [ ] **Local smoke on the RTX 3060** (optional but valuable, $0):
+      `docker run --rm --gpus all latentsky-forecast:0.17.0-models --config /opt/latentsky/configs/event_doksuri_2023.yaml --dry-run`
+      — loads both models and reports VRAM. Expect possible OOM at 12 GB; even that
+      proves the install, the CUDA extensions and the checkpoint paths.
+- [ ] **ECR**: repository created; image pushed.
+- [ ] **S3**: bucket created; `BUCKET=<bucket> ./prefetch-models.sh` run once.
+- [ ] **VPC**: public subnet with an **S3 Gateway endpoint** (Endpoints → Gateway →
+      com.amazonaws.us-east-1.s3). Never a NAT Gateway (§9.4 — $9 of pure overhead per run).
+- [ ] **IAM**: instance profile granting S3 read/write on the bucket + ECR pull.
+- [ ] **Budgets**: $50 budget with 50/80/100% alerts; a second action-enabled budget
+      that stops EC2. Free. Detection, not prevention — the deadman is the prevention.
+
+## The day
+
+1. **Probe 5** (~$0.01, 5 min): `./rehearse-deadman.sh` — must print PASSED.
+   If it prints anything else, the day is over before it starts, deliberately.
+2. **Probe 1** (~$1, 30 min): `BUCKET=… IMAGE=… ./launch-gpu.sh --config event_doksuri_2023.yaml`
+   — NVIDIA's own tested date. Watch `runs/<id>/run.log` land in S3. If this fails,
+   the failure is on NVIDIA's example path, which is a far easier debugging problem.
+3. **The hero** (~$5): `./launch-gpu.sh --config event_gaemi_2024.yaml`.
+4. **Fetch + encode (laptop, free)**: `aws s3 sync s3://$BUCKET/runs/<id>/ data/zarr/`,
+   then adapt `latentsky.encode_dev` to the run Zarr (M4 task), re-run the budget gate,
+   point the web app at the new manifest.
+5. **Same-day audit** (§9.4): no running instances, no unattached volumes, no
+   Elastic IPs, no NAT Gateways. Two minutes in the console.
+
+## If things go wrong
+
+- **OOM on g6e (48 GB)**: relaunch with `INSTANCE_TYPE=g7e.2xlarge` (96 GB, ~$3.36/hr)
+  — same G-family quota, no new approval needed. Budget an hour for driver friction.
+- **Gaemi output looks scientifically wrong**: retreat to `event_koinu_2023.yaml`,
+  NVIDIA's own worked-example date.
+- **Anything hangs**: do nothing. The deadman fires at 4 h and the worst case is ~$9.
+  That is the design working, not failing.

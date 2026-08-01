@@ -10,8 +10,8 @@ Ordered by value per pound. See `DOCS/Architecture.md` §14 for the full table a
 | 2 | [`probe2_corrdiff_grid.py`](probe2_corrdiff_grid.py) — measure the CorrDiff grid | $0 | ✅ done 31 Jul 2026 |
 | 3 | [`probe3-colour-identity/`](probe3-colour-identity/) — Cesium colour contamination | $0 | ✅ done 31 Jul 2026 |
 | 4 | [`probe4-payload/`](probe4-payload/) — real-field compression at final geometry | $0 | ✅ done 31 Jul 2026 |
-| 5 | `t3.micro` deadman-switch rehearsal | $0.01 | outstanding |
-| 6 | WebGL2 `TEXTURE_2D_ARRAY` allocation on the target laptop | $0 | outstanding |
+| 5 | `t3.micro` deadman-switch rehearsal — script ready at [`../infra/gpu/rehearse-deadman.sh`](../infra/gpu/rehearse-deadman.sh) | $0.01 | ready to run (needs AWS creds) |
+| 6 | [`probe6-webgl-limits/`](probe6-webgl-limits/) — WebGL2 texture limits | $0 | ✅ run 31 Jul 2026 — passes on the dev machine, **but** that machine has an RTX 3060; re-run on a true integrated-graphics laptop for the formal answer |
 | 7 | Confirm CloudFront flat-rate plan eligibility in the console | $0 | outstanding |
 
 ## Probe 2 — CorrDiff grid

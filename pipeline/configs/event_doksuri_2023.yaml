@@ -1,0 +1,12 @@
+# MILESTONE-1 / PROBE-1 TARGET — Typhoon Doksuri.
+# This init datetime is the one in NVIDIA's shipped 03_ensemble_downscaling.py, so a
+# failure on this config is a failure on NVIDIA's own tested date — a fundamentally
+# easier debugging problem than our own event. Run this FIRST on the first GPU hour.
+init: "2023-07-26T12:00:00"
+nsteps: 20            # 6-hourly SFNO steps -> 5 days
+hero_steps: 12        # CorrDiff on the first 12 steps -> 3 days of hero window
+ensemble_step: 6      # 4 diffusion samples at this step (the honesty panel)
+ensemble_samples: 4
+seed: 20230726
+coarse_variables: [u10m, v10m, t2m, tcwv, msl]
+output: /out/doksuri_2023.zarr

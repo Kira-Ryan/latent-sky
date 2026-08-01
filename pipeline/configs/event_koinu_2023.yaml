@@ -1,0 +1,12 @@
+# GUARANTEED-WORKS FALLBACK — Typhoon Koinu.
+# NVIDIA's own single-model CorrDiff worked example uses this date. If Gaemi
+# misbehaves scientifically (out-of-distribution weirdness), this is the retreat
+# position that still ships a real typhoon.
+init: "2023-10-04T18:00:00"
+nsteps: 20
+hero_steps: 12
+ensemble_step: 6
+ensemble_samples: 4
+seed: 20231004
+coarse_variables: [u10m, v10m, t2m, tcwv, msl]
+output: /out/koinu_2023.zarr
