@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Latent Sky — the idea, visually</title>
+<style>
+  :root{
+    --bg:#070c1a; --bg2:#0c1430; --panel:#101a38; --panel2:#0d1730;
+    --line:#22304f; --line2:#2c3d63;
+    --ink:#e8eefc; --ink2:#a9b8d8; --ink3:#6d7fa5;
+    --cyan:#4fd1c5; --violet:#a78bfa; --amber:#fbbf24; --rose:#fb7185;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:
+      radial-gradient(120% 90% at 80% -10%, #16255a 0%, transparent 55%),
+      radial-gradient(100% 70% at 10% 105%, #10304a 0%, transparent 60%),
+      var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.6;-webkit-font-smoothing:antialiased;padding:0 0 70px}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 26px}
+
+  header{padding:64px 0 10px;text-align:center}
+  .eyebrow{text-transform:uppercase;letter-spacing:.22em;font-size:11px;font-weight:700;color:var(--cyan);margin:0 0 18px}
+  h1{font-size:56px;line-height:1;margin:0 0 6px;font-weight:300;letter-spacing:-.02em;
+     background:linear-gradient(100deg,#e8eefc 10%,#8ab6ff 50%,#c4b5fd 90%);
+     -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .sub{color:var(--ink3);font-size:13px;letter-spacing:.06em;margin:0}
+
+  .summary{max-width:760px;margin:44px auto 0;text-align:center}
+  .summary p{font-size:19px;line-height:1.65;color:var(--ink2);margin:0 0 16px}
+  .summary p:first-child{font-size:23px;color:var(--ink);font-weight:500}
+  .summary b{color:var(--cyan);font-weight:600}
+  .summary .hero-line b{color:var(--amber)}
+
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.2em;font-weight:700;
+     color:var(--ink3);margin:0 0 6px;text-align:center}
+  .h2sub{text-align:center;color:var(--ink3);font-size:14px;margin:0 0 26px}
+
+  section{margin-top:76px}
+  .card{background:linear-gradient(180deg,rgba(20,32,66,.75),rgba(11,19,44,.75));
+        border:1px solid var(--line);border-radius:20px;padding:26px 22px;
+        box-shadow:0 20px 60px rgba(0,0,0,.35)}
+  svg{display:block;width:100%;height:auto}
+
+  .legend{display:flex;justify-content:center;gap:26px;flex-wrap:wrap;margin-top:20px;font-size:12.5px;color:var(--ink3)}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:7px;vertical-align:-1px}
+
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:26px}
+  .step{background:linear-gradient(180deg,rgba(20,32,66,.7),rgba(11,19,44,.7));
+        border:1px solid var(--line);border-radius:16px;padding:0 0 18px;overflow:hidden;
+        display:flex;flex-direction:column}
+  .step .thumb{background:#060a16;border-bottom:1px solid var(--line);padding:0}
+  .step .body{padding:15px 17px 0}
+  .step .n{font-size:10.5px;letter-spacing:.18em;font-weight:700;color:var(--cyan);text-transform:uppercase}
+  .step h3{font-size:16px;margin:5px 0 7px;font-weight:600;color:var(--ink)}
+  .step p{font-size:13.5px;line-height:1.6;color:var(--ink2);margin:0}
+  .step.hero{border-color:#6b4d1a;background:linear-gradient(180deg,rgba(60,42,12,.5),rgba(24,18,8,.6))}
+  .step.hero .n{color:var(--amber)}
+  .step.hero .thumb{border-bottom-color:#4a3714}
+
+  .note{max-width:800px;margin:30px auto 0;text-align:center;color:var(--ink3);font-size:14px;line-height:1.75}
+  .note b{color:var(--ink2);font-weight:600}
+
+  footer{margin-top:70px;text-align:center;color:var(--ink3);font-size:12.5px;line-height:1.9}
+  footer b{color:var(--ink2)}
+
+  @media(max-width:860px){.steps{grid-template-columns:1fr 1fr}h1{font-size:42px}}
+  @media(max-width:560px){.steps{grid-template-columns:1fr}h1{font-size:34px}.summary p:first-child{font-size:19px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">Project concept · at a glance</p>
+    <h1>Latent Sky</h1>
+    <p class="sub">AI WEATHER · RENDERED AS A LIVING GLOBE</p>
+  </header>
+
+  <div class="summary">
+    <p>An interactive 3D globe that shows you the weather <b>as an AI predicts it</b>.</p>
+    <p>It pulls real atmospheric data, runs it through NVIDIA's open Earth&#8209;2 forecasting models, and paints the result onto a planet you can turn, zoom and scrub through time.</p>
+    <p class="hero-line">Its signature moment: you fly down to a region and watch a blurry global forecast <b>snap into razor&#8209;sharp kilometre&#8209;scale detail</b> — invented by the AI, not measured.</p>
+  </div>
+
+  <section>
+    <h2>How it works</h2>
+    <p class="h2sub">The whole trick is the split: the expensive part happens once, offline. The part your visitor touches is featherweight.</p>
+
+    <div class="card">
+      <svg viewBox="0 0 1160 470" role="img" aria-label="Flow diagram of the Latent Sky pipeline">
+        <defs>
+          <linearGradient id="gBox" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#1a2850"/><stop offset="1" stop-color="#131f42"/>
+          </linearGradient>
+          <linearGradient id="gAI" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#4a3a16"/><stop offset="1" stop-color="#33270f"/>
+          </linearGradient>
+          <linearGradient id="gEnd" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#33255c"/><stop offset="1" stop-color="#241a44"/>
+          </linearGradient>
+          <marker id="ah" markerWidth="9" markerHeight="9" refX="7.5" refY="3.2" orient="auto">
+            <path d="M0,0 L7.5,3.2 L0,6.4 z" fill="#4a6595"/>
+          </marker>
+          <marker id="ahA" markerWidth="9" markerHeight="9" refX="7.5" refY="3.2" orient="auto">
+            <path d="M0,0 L7.5,3.2 L0,6.4 z" fill="#a1761f"/>
+          </marker>
+        </defs>
+
+        <!-- ZONE: offline / GPU -->
+        <rect x="196" y="46" width="570" height="330" rx="18" fill="#0d1a33" fill-opacity=".7" stroke="#2b4a70" stroke-dasharray="6 5"/>
+        <text x="481" y="74" text-anchor="middle" fill="#5b9fd6" font-size="12.5" font-weight="700" letter-spacing="2.4">RUNS ONCE — ON A RENTED GPU</text>
+        <text x="481" y="94" text-anchor="middle" fill="#4a6d94" font-size="12">a few dollars an hour, then you switch it off</text>
+
+        <!-- ZONE: browser -->
+        <rect x="790" y="46" width="356" height="330" rx="18" fill="#0b1f2b" fill-opacity=".7" stroke="#276b66" stroke-dasharray="6 5"/>
+        <text x="968" y="74" text-anchor="middle" fill="#4fd1c5" font-size="12.5" font-weight="700" letter-spacing="2.4">RUNS IN ANY BROWSER</text>
+        <text x="968" y="94" text-anchor="middle" fill="#4a8f8a" font-size="12">no GPU, no server, no running costs</text>
+
+        <!-- BOX 1: data -->
+        <rect x="16" y="180" width="158" height="86" rx="13" fill="url(#gBox)" stroke="#3b5788"/>
+        <text x="95" y="211" text-anchor="middle" fill="#e8eefc" font-size="14.5" font-weight="600">Real weather data</text>
+        <text x="95" y="232" text-anchor="middle" fill="#8fa4cc" font-size="11.5">GFS · ERA5 · HRRR</text>
+        <text x="95" y="249" text-anchor="middle" fill="#8fa4cc" font-size="11.5">satellite feeds</text>
+
+        <!-- BOX 2: earth2studio -->
+        <rect x="216" y="180" width="158" height="86" rx="13" fill="url(#gBox)" stroke="#3b5788"/>
+        <text x="295" y="211" text-anchor="middle" fill="#e8eefc" font-size="14.5" font-weight="600">earth2studio</text>
+        <text x="295" y="232" text-anchor="middle" fill="#8fa4cc" font-size="11.5">NVIDIA's open</text>
+        <text x="295" y="249" text-anchor="middle" fill="#8fa4cc" font-size="11.5">Python framework</text>
+
+        <!-- BOX 3a: global forecast -->
+        <rect x="416" y="112" width="158" height="86" rx="13" fill="url(#gBox)" stroke="#3b5788"/>
+        <text x="495" y="140" text-anchor="middle" fill="#e8eefc" font-size="14.5" font-weight="600">Global forecast</text>
+        <text x="495" y="160" text-anchor="middle" fill="#8fa4cc" font-size="11.5">FourCastNet-3 / Atlas</text>
+        <text x="495" y="180" text-anchor="middle" fill="#6f88b5" font-size="11.5">whole planet · ~25 km</text>
+
+        <!-- BOX 3b: super-resolution (the star) -->
+        <rect x="416" y="248" width="158" height="86" rx="13" fill="url(#gAI)" stroke="#a1761f" stroke-width="1.6"/>
+        <text x="495" y="276" text-anchor="middle" fill="#fde68a" font-size="14.5" font-weight="600">Super-resolution</text>
+        <text x="495" y="296" text-anchor="middle" fill="#d9b878" font-size="11.5">CorrDiff · StormScope</text>
+        <text x="495" y="316" text-anchor="middle" fill="#bb9a5e" font-size="11.5">one region · ~2 km</text>
+        <text x="495" y="358" text-anchor="middle" fill="#a1761f" font-size="11" font-weight="700" letter-spacing="1.6">THE WOW</text>
+
+        <!-- BOX 4: transform -->
+        <rect x="608" y="180" width="150" height="86" rx="13" fill="url(#gBox)" stroke="#3b5788"/>
+        <text x="683" y="211" text-anchor="middle" fill="#e8eefc" font-size="14.5" font-weight="600">Forecast files</text>
+        <text x="683" y="232" text-anchor="middle" fill="#8fa4cc" font-size="11.5">converted into</text>
+        <text x="683" y="249" text-anchor="middle" fill="#8fa4cc" font-size="11.5">web-ready layers</text>
+
+        <!-- BOX 5: cesium -->
+        <rect x="810" y="180" width="150" height="86" rx="13" fill="url(#gBox)" stroke="#2f7d76"/>
+        <text x="885" y="211" text-anchor="middle" fill="#e8eefc" font-size="14.5" font-weight="600">CesiumJS globe</text>
+        <text x="885" y="232" text-anchor="middle" fill="#8fbfba" font-size="11.5">3D · time-scrubbable</text>
+        <text x="885" y="249" text-anchor="middle" fill="#8fbfba" font-size="11.5">+ explorer UI</text>
+
+        <!-- BOX 6: link -->
+        <rect x="988" y="180" width="150" height="86" rx="13" fill="url(#gEnd)" stroke="#6d5aa8"/>
+        <text x="1063" y="211" text-anchor="middle" fill="#e8eefc" font-size="14.5" font-weight="600">One public link</text>
+        <text x="1063" y="232" text-anchor="middle" fill="#b5a5df" font-size="11.5">static hosting</text>
+        <text x="1063" y="249" text-anchor="middle" fill="#b5a5df" font-size="11.5">this is the CV</text>
+
+        <!-- ARROWS -->
+        <line x1="180" y1="223" x2="206" y2="223" stroke="#4a6595" stroke-width="2" marker-end="url(#ah)"/>
+        <path d="M380,223 L392,223 Q404,223 404,205 L404,173 Q404,155 416,155" fill="none" stroke="#4a6595" stroke-width="2" marker-end="url(#ah)"/>
+        <path d="M574,155 Q592,155 592,180 L592,205 Q592,223 604,223" fill="none" stroke="#4a6595" stroke-width="2" marker-end="url(#ah)"/>
+        <path d="M495,204 L495,240" fill="none" stroke="#a1761f" stroke-width="2" marker-end="url(#ahA)"/>
+        <path d="M574,291 Q592,291 592,266 L592,241 Q592,223 604,223" fill="none" stroke="#a1761f" stroke-width="2" marker-end="url(#ahA)"/>
+        <line x1="764" y1="223" x2="804" y2="223" stroke="#4a6595" stroke-width="2" marker-end="url(#ah)"/>
+        <line x1="966" y1="223" x2="982" y2="223" stroke="#4a6595" stroke-width="2" marker-end="url(#ah)"/>
+
+        <!-- label on the split -->
+        <text x="486" y="226" text-anchor="end" fill="#a1761f" font-size="11" font-style="italic">then sharpened</text>
+
+        <!-- bottom caption -->
+        <text x="580" y="424" text-anchor="middle" fill="#6d7fa5" font-size="13">
+          You do everything on the left once, save the output, and switch the GPU off.
+        </text>
+        <text x="580" y="446" text-anchor="middle" fill="#6d7fa5" font-size="13">
+          Everything on the right is just files — so the demo you send people is fast, free and always up.
+        </text>
+      </svg>
+
+      <div class="legend">
+        <span><i style="background:#2b4a70"></i>Offline — happens once, on a rented GPU</span>
+        <span><i style="background:#a1761f"></i>The AI wow — coarse becomes sharp</span>
+        <span><i style="background:#276b66"></i>Live — runs on the visitor's laptop</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What someone actually experiences</h2>
+    <p class="h2sub">Six moments, in order, from opening the link to sending it to a friend.</p>
+
+    <div class="steps">
+
+      <div class="step">
+        <div class="thumb">
+          <svg viewBox="0 0 300 150" aria-label="A dark globe already turning">
+            <rect width="300" height="150" fill="#060a16"/>
+            <circle cx="150" cy="78" r="52" fill="#0e1c38" stroke="#22406e"/>
+            <path d="M100,64 Q150,52 200,66" stroke="#2f5c94" stroke-width="3" fill="none" opacity=".8"/>
+            <path d="M100,86 Q150,100 200,84" stroke="#2f5c94" stroke-width="3" fill="none" opacity=".6"/>
+            <path d="M104,100 Q150,110 196,98" stroke="#2f5c94" stroke-width="2" fill="none" opacity=".4"/>
+            <ellipse cx="150" cy="78" rx="52" ry="15" fill="none" stroke="#1c3055" stroke-dasharray="3 4"/>
+            <circle cx="150" cy="78" r="52" fill="none" stroke="#4fd1c5" stroke-opacity=".25" stroke-width="2"/>
+          </svg>
+        </div>
+        <div class="body">
+          <div class="n">Moment one</div>
+          <h3>It's already alive</h3>
+          <p>No loading screen, no settings, no empty state. The page opens on a dark Earth already turning, with weather already moving across it.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="thumb">
+          <svg viewBox="0 0 300 150" aria-label="Globe painted with a colour ramp and a legend">
+            <rect width="300" height="150" fill="#060a16"/>
+            <circle cx="140" cy="78" r="52" fill="#0e1c38" stroke="#22406e"/>
+            <path d="M92,62 Q140,48 188,64" stroke="#4fd1c5" stroke-width="6" fill="none" opacity=".85" stroke-linecap="round"/>
+            <path d="M92,84 Q140,100 188,82" stroke="#fbbf24" stroke-width="6" fill="none" opacity=".8" stroke-linecap="round"/>
+            <path d="M98,102 Q140,112 184,100" stroke="#fb7185" stroke-width="4" fill="none" opacity=".7" stroke-linecap="round"/>
+            <rect x="222" y="46" width="12" height="66" rx="3" fill="url(#ramp)"/>
+            <defs><linearGradient id="ramp" x1="0" y1="1" x2="0" y2="0">
+              <stop offset="0" stop-color="#1e3a8a"/><stop offset=".5" stop-color="#4fd1c5"/>
+              <stop offset=".8" stop-color="#fbbf24"/><stop offset="1" stop-color="#fb7185"/>
+            </linearGradient></defs>
+            <text x="242" y="54" fill="#6d7fa5" font-size="9" font-family="sans-serif">fast</text>
+            <text x="242" y="112" fill="#6d7fa5" font-size="9" font-family="sans-serif">calm</text>
+          </svg>
+        </div>
+        <div class="body">
+          <div class="n">Moment two</div>
+          <h3>Weather you can read</h3>
+          <p>One atmospheric field painted across the planet in honest, perceptually even colour — wind ribbons, cloud bands — with a legend that always says what the colours mean.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="thumb">
+          <svg viewBox="0 0 300 150" aria-label="Globe with a timeline scrubber below">
+            <rect width="300" height="150" fill="#060a16"/>
+            <circle cx="150" cy="64" r="44" fill="#0e1c38" stroke="#22406e"/>
+            <path d="M110,52 Q150,40 190,54" stroke="#4fd1c5" stroke-width="5" fill="none" opacity=".8"/>
+            <path d="M110,74 Q150,88 190,72" stroke="#fbbf24" stroke-width="5" fill="none" opacity=".7"/>
+            <rect x="40" y="122" width="220" height="4" rx="2" fill="#22304f"/>
+            <rect x="40" y="122" width="96" height="4" rx="2" fill="#4fd1c5"/>
+            <circle cx="136" cy="124" r="7" fill="#4fd1c5"/>
+            <circle cx="136" cy="124" r="12" fill="#4fd1c5" opacity=".18"/>
+            <text x="40" y="142" fill="#6d7fa5" font-size="9" font-family="sans-serif">now</text>
+            <text x="238" y="142" fill="#6d7fa5" font-size="9" font-family="sans-serif">+5 days</text>
+            <path d="M22,120 l0,8 M22,124 l-6,0" stroke="#3c4f75" stroke-width="2"/>
+          </svg>
+        </div>
+        <div class="body">
+          <div class="n">Moment three</div>
+          <h3>They scrub the future</h3>
+          <p>A timeline along the bottom. Press play and days of predicted weather flow past smoothly; grab the scrubber and move through the forecast by hand, forwards or back.</p>
+        </div>
+      </div>
+
+      <div class="step hero">
+        <div class="thumb">
+          <svg viewBox="0 0 300 150" aria-label="Split view: blurry coarse forecast on the left, sharp AI detail on the right">
+            <rect width="300" height="150" fill="#060a16"/>
+            <defs>
+              <clipPath id="lft"><rect x="0" y="0" width="150" height="150"/></clipPath>
+              <clipPath id="rgt"><rect x="150" y="0" width="150" height="150"/></clipPath>
+              <filter id="blur"><feGaussianBlur stdDeviation="7"/></filter>
+            </defs>
+            <g clip-path="url(#lft)" filter="url(#blur)">
+              <rect x="30" y="30" width="240" height="90" fill="#1a2f52"/>
+              <ellipse cx="110" cy="66" rx="46" ry="26" fill="#3d7a6f"/>
+              <ellipse cx="150" cy="94" rx="42" ry="22" fill="#a1761f"/>
+            </g>
+            <g clip-path="url(#rgt)">
+              <rect x="30" y="30" width="240" height="90" fill="#1a2f52"/>
+              <ellipse cx="110" cy="66" rx="46" ry="26" fill="#3d7a6f"/>
+              <ellipse cx="150" cy="94" rx="42" ry="22" fill="#a1761f"/>
+              <circle cx="168" cy="60" r="7" fill="#fbbf24"/><circle cx="186" cy="72" r="5" fill="#fde68a"/>
+              <circle cx="200" cy="58" r="4" fill="#fbbf24"/><circle cx="176" cy="92" r="6" fill="#fb7185"/>
+              <circle cx="204" cy="86" r="4.5" fill="#fbbf24"/><circle cx="220" cy="70" r="3.5" fill="#fde68a"/>
+              <circle cx="192" cy="104" r="4" fill="#fb7185"/><circle cx="228" cy="94" r="3" fill="#fbbf24"/>
+              <path d="M160,44 q22,6 40,2 t38,6" stroke="#7fe3d6" stroke-width="2" fill="none"/>
+              <path d="M158,110 q26,-5 44,1 t36,-3" stroke="#7fe3d6" stroke-width="1.6" fill="none" opacity=".7"/>
+            </g>
+            <line x1="150" y1="16" x2="150" y2="134" stroke="#fbbf24" stroke-width="2"/>
+            <circle cx="150" cy="75" r="10" fill="#0d1730" stroke="#fbbf24" stroke-width="2"/>
+            <path d="M146,71 l-4,4 4,4 M154,71 l4,4 -4,4" stroke="#fbbf24" stroke-width="1.6" fill="none"/>
+            <text x="76" y="140" text-anchor="middle" fill="#7c8bb0" font-size="9.5" font-family="sans-serif">~25 km</text>
+            <text x="224" y="140" text-anchor="middle" fill="#fbbf24" font-size="9.5" font-family="sans-serif">~2 km · AI</text>
+          </svg>
+        </div>
+        <div class="body">
+          <div class="n">Moment four — the reveal</div>
+          <h3>Blurry becomes sharp</h3>
+          <p>They fly down to a region. Terrain rises. The soft gradient resolves into real structure — storm cells, rain bands with edges — generated by the AI, not measured. This is the moment the project exists for.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="thumb">
+          <svg viewBox="0 0 300 150" aria-label="Globe with a few quiet UI controls">
+            <rect width="300" height="150" fill="#060a16"/>
+            <circle cx="168" cy="76" r="48" fill="#0e1c38" stroke="#22406e"/>
+            <path d="M124,62 Q168,50 212,64" stroke="#4fd1c5" stroke-width="5" fill="none" opacity=".8"/>
+            <path d="M124,86 Q168,100 212,84" stroke="#a78bfa" stroke-width="5" fill="none" opacity=".7"/>
+            <rect x="16" y="34" width="66" height="17" rx="8.5" fill="#16264a" stroke="#4fd1c5" stroke-opacity=".7"/>
+            <text x="49" y="46" text-anchor="middle" fill="#9fe8e0" font-size="9.5" font-family="sans-serif">wind</text>
+            <rect x="16" y="58" width="66" height="17" rx="8.5" fill="#101a38" stroke="#2c3d63"/>
+            <text x="49" y="70" text-anchor="middle" fill="#7c8bb0" font-size="9.5" font-family="sans-serif">temp</text>
+            <rect x="16" y="82" width="66" height="17" rx="8.5" fill="#101a38" stroke="#2c3d63"/>
+            <text x="49" y="94" text-anchor="middle" fill="#7c8bb0" font-size="9.5" font-family="sans-serif">rain</text>
+            <rect x="16" y="106" width="66" height="17" rx="8.5" fill="#101a38" stroke="#2c3d63"/>
+            <text x="49" y="118" text-anchor="middle" fill="#7c8bb0" font-size="9.5" font-family="sans-serif">cloud</text>
+          </svg>
+        </div>
+        <div class="body">
+          <div class="n">Moment five</div>
+          <h3>They play</h3>
+          <p>Switch variables, orbit the region, go back out to the whole planet, read a short panel on which models made this and where the data came from. Few controls, all quiet, none in the way.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="thumb">
+          <svg viewBox="0 0 300 150" aria-label="The link being shared onward">
+            <rect width="300" height="150" fill="#060a16"/>
+            <circle cx="96" cy="75" r="26" fill="#0e1c38" stroke="#22406e"/>
+            <path d="M74,68 Q96,60 118,70" stroke="#4fd1c5" stroke-width="3.5" fill="none" opacity=".8"/>
+            <path d="M76,84 Q96,92 116,82" stroke="#fbbf24" stroke-width="3" fill="none" opacity=".7"/>
+            <path d="M126,75 L162,75" stroke="#3c4f75" stroke-width="2" stroke-dasharray="4 4"/>
+            <circle cx="186" cy="46" r="13" fill="#1a2850" stroke="#4fd1c5" stroke-opacity=".6"/>
+            <circle cx="212" cy="82" r="13" fill="#1a2850" stroke="#a78bfa" stroke-opacity=".6"/>
+            <circle cx="180" cy="112" r="13" fill="#1a2850" stroke="#fbbf24" stroke-opacity=".6"/>
+            <path d="M166,60 L176,40 M166,80 L200,82 M164,88 L170,104" stroke="#2c3d63" stroke-width="1.6"/>
+            <circle cx="166" cy="75" r="5" fill="#4fd1c5"/>
+          </svg>
+        </div>
+        <div class="body">
+          <div class="n">Moment six</div>
+          <h3>They send it on</h3>
+          <p>They leave understanding what AI weather models actually do — and with an impression of whoever built it. The repo and a 90-second video sit quietly at the bottom for anyone who wants more.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <p class="note">
+      <b>The whole design test:</b> a meteorologist should find it accurate, and someone who knows nothing about weather should find it beautiful — and both of them should keep dragging the timeline.
+    </p>
+  </section>
+
+  <footer>
+    <p><b>Latent Sky</b> · concept v0.1 · full document at <b>DOCS/concept.md</b><br>
+    Alternative name held in reserve: <b>fovea-earth</b> — see §5.3 of the concept doc</p>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.claude/settings.local.json
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+
+# Probe working files — the 717 MB CorrDiff package and anything unpacked from it
+probes/**/corrdiff_pkg/
+probes/**/*.zip
+
+# GPU output. Published as a GitHub Release asset, never committed.
+data/zarr/
+
+# Dev data derived from the CorrDiff sample dataset (CC BY-NC-ND 4.0).
+# LOCAL ONLY — committing or deploying anything in here is a licence violation.
+data/dev/
+

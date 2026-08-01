@@ -1,0 +1,67 @@
+# Per-asset licence audit. One entry per third-party asset the project touches.
+# CI (licences.yml) fails if any pipeline config references an asset absent from this file.
+# redistributable == may DERIVED OUTPUT be published publicly under this project's terms.
+
+assets:
+  - name: corrdiff_inference_package
+    uri: ngc://models/nvidia/modulus/corrdiff_inference_package@1
+    bytes: 717116287
+    sha256: 0718f1e60e97fc16efa0928d3eecc70a86825f3704ddd699804ce45ffd391747
+    checked_on: 2026-07-31
+    contains:
+      - path: checkpoints/            # regression.mdlus + diffusion.mdlus
+        licence: Apache-2.0           # read from checkpoints/LICENSE.txt inside the package
+        redistributable: true
+      - path: dataset/                # 2023-01-24-cwb-4years_5times.zarr
+        licence: CC-BY-NC-ND-4.0      # read from dataset/LICENSE.txt inside the package
+        redistributable: false        # LOCAL DEV ONLY. Never committed, never deployed,
+                                      # no derived imagery published. data/dev/ is gitignored.
+
+  - name: earth2studio
+    uri: git+https://github.com/NVIDIA/earth2studio.git@0.17.0
+    licence: Apache-2.0
+    checked_on: 2026-07-30
+    redistributable: true
+
+  - name: sfno_73ch_small
+    uri: ngc://models/nvidia/modulus/sfno_73ch_small@0.1.0
+    licence: Apache-2.0
+    checked_on: 2026-07-30
+    redistributable: true
+
+  - name: era5-arco
+    uri: gs://gcp-public-data-arco-era5
+    licence: CC-BY-4.0
+    checked_on: 2026-07-30
+    redistributable: true
+    attribution: "Contains modified Copernicus Climate Change Service information [2026]"
+
+  - name: cesiumjs
+    uri: npm:cesium@1.143.0
+    licence: Apache-2.0
+    checked_on: 2026-07-31
+    redistributable: true
+
+  - name: scientific-colour-maps          # batlowK, davos, vik
+    uri: pypi:cmcrameri
+    licence: MIT
+    checked_on: 2026-07-31
+    redistributable: true
+
+  - name: cmocean                          # thermal
+    uri: pypi:cmocean
+    licence: MIT
+    checked_on: 2026-07-31
+    redistributable: true
+
+  - name: cmweather                        # ChaseSpectral
+    uri: pypi:cmweather
+    licence: MIT
+    checked_on: 2026-07-31
+    redistributable: true
+
+  - name: natural-earth
+    uri: https://www.naturalearthdata.com/
+    licence: public-domain
+    checked_on: 2026-07-31
+    redistributable: true

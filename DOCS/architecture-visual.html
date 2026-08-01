@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Latent Sky — the architecture, visually</title>
+<style>
+  :root{
+    --bg:#070c1a; --bg2:#0c1430; --panel:#101a38; --panel2:#0d1730;
+    --line:#22304f; --line2:#2c3d63;
+    --ink:#e8eefc; --ink2:#a9b8d8; --ink3:#6d7fa5;
+    --cyan:#4fd1c5; --violet:#a78bfa; --amber:#fbbf24; --rose:#fb7185;
+    --gold:#b5883a; --green:#4ade80;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:
+      radial-gradient(120% 90% at 80% -10%, #16255a 0%, transparent 55%),
+      radial-gradient(100% 70% at 10% 105%, #10304a 0%, transparent 60%),
+      var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.6;-webkit-font-smoothing:antialiased;padding:0 0 70px}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 26px}
+
+  header{padding:64px 0 10px;text-align:center}
+  .eyebrow{text-transform:uppercase;letter-spacing:.22em;font-size:11px;font-weight:700;color:var(--cyan);margin:0 0 18px}
+  h1{font-size:52px;line-height:1.05;margin:0 0 6px;font-weight:300;letter-spacing:-.02em;
+     background:linear-gradient(100deg,#e8eefc 10%,#8ab6ff 50%,#c4b5fd 90%);
+     -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .sub{color:var(--ink3);font-size:13px;letter-spacing:.06em;margin:0}
+
+  .summary{max-width:780px;margin:44px auto 0;text-align:center}
+  .summary p{font-size:18px;line-height:1.65;color:var(--ink2);margin:0 0 16px}
+  .summary p:first-child{font-size:22px;color:var(--ink);font-weight:500}
+  .summary b{color:var(--cyan);font-weight:600}
+  .summary .hero-line b{color:var(--amber)}
+
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.2em;font-weight:700;
+     color:var(--ink3);margin:0 0 6px;text-align:center}
+  .h2sub{text-align:center;color:var(--ink3);font-size:14px;margin:0 0 26px;max-width:760px;margin-left:auto;margin-right:auto}
+
+  section{margin-top:76px}
+  .card{background:linear-gradient(180deg,rgba(20,32,66,.75),rgba(11,19,44,.75));
+        border:1px solid var(--line);border-radius:20px;padding:26px 22px;
+        box-shadow:0 20px 60px rgba(0,0,0,.35)}
+  svg{display:block;width:100%;height:auto}
+
+  .legend{display:flex;justify-content:center;gap:26px;flex-wrap:wrap;margin-top:20px;font-size:12.5px;color:var(--ink3)}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:7px;vertical-align:-1px}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+
+  .stat{background:linear-gradient(180deg,rgba(20,32,66,.7),rgba(11,19,44,.7));
+        border:1px solid var(--line);border-radius:16px;padding:22px 20px;text-align:center}
+  .stat .n{font-size:44px;font-weight:300;letter-spacing:-.02em;line-height:1.1;color:var(--ink)}
+  .stat .n b{font-weight:600;color:var(--amber)}
+  .stat .cap{font-size:13px;color:var(--ink3);margin-top:8px;line-height:1.55}
+  .stat.cy .n b{color:var(--cyan)}
+  .stat.gr .n b{color:var(--green)}
+
+  .flip{background:linear-gradient(180deg,rgba(20,32,66,.7),rgba(11,19,44,.7));
+        border:1px solid var(--line);border-radius:16px;padding:18px 20px}
+  .flip .was{font-size:12.5px;color:var(--rose);text-decoration:line-through;text-decoration-color:rgba(251,113,133,.55)}
+  .flip .now{font-size:15px;color:var(--ink);font-weight:600;margin-top:4px}
+  .flip .why{font-size:12.5px;color:var(--ink3);margin-top:6px;line-height:1.6}
+  .flip .now em{color:var(--amber);font-style:normal}
+
+  table.probes{width:100%;border-collapse:collapse;font-size:13.5px}
+  table.probes th{font-size:10.5px;text-transform:uppercase;letter-spacing:.16em;color:var(--ink3);
+        text-align:left;padding:8px 10px;border-bottom:1px solid var(--line2)}
+  table.probes td{padding:9px 10px;border-bottom:1px solid var(--line);color:var(--ink2);vertical-align:top}
+  table.probes td:first-child{color:var(--ink3);font-variant-numeric:tabular-nums}
+  table.probes .done{color:var(--green);font-weight:600}
+  table.probes .todo{color:var(--amber);font-weight:600}
+  table.probes b{color:var(--ink)}
+
+  .note{max-width:800px;margin:30px auto 0;text-align:center;color:var(--ink3);font-size:14px;line-height:1.75}
+  .note b{color:var(--ink2);font-weight:600}
+
+  footer{margin-top:70px;text-align:center;color:var(--ink3);font-size:12.5px;line-height:1.9}
+  footer b{color:var(--ink2)}
+
+  @media(max-width:900px){.grid3{grid-template-columns:1fr 1fr}h1{font-size:40px}}
+  @media(max-width:620px){.grid2,.grid3{grid-template-columns:1fr}h1{font-size:32px}.stat .n{font-size:34px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">Architecture · v0.4 · measured</p>
+    <h1>Latent Sky</h1>
+    <p class="sub">HOW IT IS BUILT · AND WHAT HAS BEEN PROVEN</p>
+  </header>
+
+  <div class="summary">
+    <p>The concept had two boxes. The architecture has <b>three</b> — and the middle one is what makes weekends survivable.</p>
+    <p>The expensive, one-shot GPU stage produces a small archive and stops. Every decision about colour, resolution and framing then becomes a <b>free laptop re-run</b>. The browser gets a folder of files.</p>
+    <p class="hero-line">And the hero moment is no longer a plan: the reveal <b>already runs on real typhoon data</b>, on localhost, verified in real Chrome.</p>
+  </div>
+
+  <!-- ══════════════════ THE THREE-STAGE FLOW ══════════════════ -->
+  <section>
+    <h2>The build, end to end</h2>
+    <p class="h2sub">Each stage hands the next a file. Only the first costs money, and it runs once.</p>
+
+    <div class="card">
+      <svg viewBox="0 0 1160 560" role="img" aria-label="Three-stage pipeline: GPU build, laptop encode, browser view">
+        <defs>
+          <linearGradient id="gBox" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#1a2850"/><stop offset="1" stop-color="#131f42"/>
+          </linearGradient>
+          <linearGradient id="gAI" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#4a3a16"/><stop offset="1" stop-color="#33270f"/>
+          </linearGradient>
+          <linearGradient id="gEnc" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#3a3018"/><stop offset="1" stop-color="#241e10"/>
+          </linearGradient>
+          <linearGradient id="gEnd" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#33255c"/><stop offset="1" stop-color="#241a44"/>
+          </linearGradient>
+          <marker id="ah" markerWidth="9" markerHeight="9" refX="7.5" refY="3.2" orient="auto">
+            <path d="M0,0 L7.5,3.2 L0,6.4 z" fill="#4a6595"/>
+          </marker>
+          <marker id="ahA" markerWidth="9" markerHeight="9" refX="7.5" refY="3.2" orient="auto">
+            <path d="M0,0 L7.5,3.2 L0,6.4 z" fill="#a1761f"/>
+          </marker>
+        </defs>
+
+        <!-- ZONE 1: GPU -->
+        <rect x="14" y="46" width="366" height="392" rx="18" fill="#0d1a33" fill-opacity=".7" stroke="#2b4a70" stroke-dasharray="6 5"/>
+        <text x="197" y="76" text-anchor="middle" fill="#5b9fd6" font-size="12.5" font-weight="700" letter-spacing="2.2">RENTED GPU — ONCE</text>
+        <text x="197" y="96" text-anchor="middle" fill="#4a6d94" font-size="11.5">g6e.2xlarge · L40S 48 GB · $19–47 total · deadman timer</text>
+
+        <!-- ZONE 2: laptop -->
+        <rect x="398" y="46" width="366" height="392" rx="18" fill="#241e10" fill-opacity=".55" stroke="#7a6226" stroke-dasharray="6 5"/>
+        <text x="581" y="76" text-anchor="middle" fill="#cfa544" font-size="12.5" font-weight="700" letter-spacing="2.2">LAPTOP — REPEATABLE</text>
+        <text x="581" y="96" text-anchor="middle" fill="#93783a" font-size="11.5">CPU only · 2.1 s per full encode · deterministic, hash-proven</text>
+
+        <!-- ZONE 3: browser -->
+        <rect x="782" y="46" width="364" height="392" rx="18" fill="#0b1f2b" fill-opacity=".7" stroke="#276b66" stroke-dasharray="6 5"/>
+        <text x="964" y="76" text-anchor="middle" fill="#4fd1c5" font-size="12.5" font-weight="700" letter-spacing="2.2">ANY BROWSER</text>
+        <text x="964" y="96" text-anchor="middle" fill="#4a8f8a" font-size="11.5">integrated graphics · no server · no token · no quota</text>
+
+        <!-- Z1 boxes -->
+        <rect x="40" y="122" width="140" height="72" rx="12" fill="url(#gBox)" stroke="#3b5788"/>
+        <text x="110" y="150" text-anchor="middle" fill="#e8eefc" font-size="13.5" font-weight="600">ARCO-ERA5</text>
+        <text x="110" y="168" text-anchor="middle" fill="#8fa4cc" font-size="10.5">anonymous · no key</text>
+        <text x="110" y="183" text-anchor="middle" fill="#8fa4cc" font-size="10.5">pinned init, ≥3 months old</text>
+
+        <rect x="214" y="122" width="140" height="72" rx="12" fill="url(#gBox)" stroke="#3b5788"/>
+        <text x="284" y="150" text-anchor="middle" fill="#e8eefc" font-size="13.5" font-weight="600">SFNO</text>
+        <text x="284" y="168" text-anchor="middle" fill="#8fa4cc" font-size="10.5">global · 73 vars · 0.25°</text>
+        <text x="284" y="183" text-anchor="middle" fill="#8fa4cc" font-size="10.5">not FCN3 — half the VRAM</text>
+
+        <rect x="40" y="240" width="140" height="72" rx="12" fill="url(#gAI)" stroke="#a1761f" stroke-width="1.6"/>
+        <text x="110" y="268" text-anchor="middle" fill="#fde68a" font-size="13.5" font-weight="600">CorrDiffTaiwan</text>
+        <text x="110" y="286" text-anchor="middle" fill="#d9b878" font-size="10.5">diffusion · 448×448</text>
+        <text x="110" y="301" text-anchor="middle" fill="#bb9a5e" font-size="10.5">2.0684 km — measured</text>
+
+        <rect x="214" y="240" width="140" height="72" rx="12" fill="url(#gBox)" stroke="#3b5788"/>
+        <text x="284" y="268" text-anchor="middle" fill="#e8eefc" font-size="13.5" font-weight="600">Zarr archive</text>
+        <text x="284" y="286" text-anchor="middle" fill="#8fa4cc" font-size="10.5">~180 MB · compressed</text>
+        <text x="284" y="301" text-anchor="middle" fill="#8fa4cc" font-size="10.5">codecs set EXPLICITLY</text>
+
+        <text x="197" y="366" text-anchor="middle" fill="#4a6d94" font-size="11" font-style="italic">the irreplaceable artefact —</text>
+        <text x="197" y="383" text-anchor="middle" fill="#4a6d94" font-size="11" font-style="italic">archived as a GitHub Release,</text>
+        <text x="197" y="400" text-anchor="middle" fill="#4a6d94" font-size="11" font-style="italic">a diffusion sample can never be re-made</text>
+
+        <!-- Z2 boxes -->
+        <rect x="424" y="122" width="140" height="72" rx="12" fill="url(#gEnc)" stroke="#8a6d2a"/>
+        <text x="494" y="150" text-anchor="middle" fill="#e8dbb5" font-size="13.5" font-weight="600">Regrid</text>
+        <text x="494" y="168" text-anchor="middle" fill="#b39d64" font-size="10.5">curvilinear → equirect</text>
+        <text x="494" y="183" text-anchor="middle" fill="#b39d64" font-size="10.5">nearest · footprint mask</text>
+
+        <rect x="598" y="122" width="140" height="72" rx="12" fill="url(#gEnc)" stroke="#8a6d2a"/>
+        <text x="668" y="150" text-anchor="middle" fill="#e8dbb5" font-size="13.5" font-weight="600">LUT + quantise</text>
+        <text x="668" y="168" text-anchor="middle" fill="#b39d64" font-size="10.5">one 256-entry ramp</text>
+        <text x="668" y="183" text-anchor="middle" fill="#b39d64" font-size="10.5">global vmin/vmax — gated</text>
+
+        <rect x="424" y="240" width="140" height="72" rx="12" fill="url(#gEnc)" stroke="#8a6d2a"/>
+        <text x="494" y="268" text-anchor="middle" fill="#e8dbb5" font-size="13.5" font-weight="600">WebP lossless</text>
+        <text x="494" y="286" text-anchor="middle" fill="#b39d64" font-size="10.5">exact=True · re-decoded</text>
+        <text x="494" y="301" text-anchor="middle" fill="#b39d64" font-size="10.5">bit-identity proven</text>
+
+        <rect x="598" y="240" width="140" height="72" rx="12" fill="url(#gEnc)" stroke="#8a6d2a"/>
+        <text x="668" y="268" text-anchor="middle" fill="#e8dbb5" font-size="13.5" font-weight="600">manifest.json</text>
+        <text x="668" y="286" text-anchor="middle" fill="#b39d64" font-size="10.5">THE contract · schema-</text>
+        <text x="668" y="301" text-anchor="middle" fill="#b39d64" font-size="10.5">validated · identity-gated</text>
+
+        <text x="581" y="366" text-anchor="middle" fill="#93783a" font-size="11" font-style="italic">24 tests green · byte-identical re-runs ·</text>
+        <text x="581" y="383" text-anchor="middle" fill="#93783a" font-size="11" font-style="italic">a build that would compare two colour scales</text>
+        <text x="581" y="400" text-anchor="middle" fill="#93783a" font-size="11" font-style="italic">refuses to emit a manifest at all</text>
+
+        <!-- Z3 boxes -->
+        <rect x="808" y="122" width="140" height="72" rx="12" fill="url(#gBox)" stroke="#2f7d76"/>
+        <text x="878" y="150" text-anchor="middle" fill="#e8eefc" font-size="13.5" font-weight="600">S3 + CloudFront</text>
+        <text x="878" y="168" text-anchor="middle" fill="#8fbfba" font-size="10.5">flat-rate Pro · $15/mo</text>
+        <text x="878" y="183" text-anchor="middle" fill="#8fbfba" font-size="10.5">the bill is CAPPED</text>
+
+        <rect x="982" y="122" width="140" height="72" rx="12" fill="url(#gBox)" stroke="#2f7d76"/>
+        <text x="1052" y="150" text-anchor="middle" fill="#e8eefc" font-size="13.5" font-weight="600">CesiumWidget</text>
+        <text x="1052" y="168" text-anchor="middle" fill="#8fbfba" font-size="10.5">zero ion · four colour-</text>
+        <text x="1052" y="183" text-anchor="middle" fill="#8fbfba" font-size="10.5">identity lines asserted</text>
+
+        <rect x="808" y="240" width="140" height="72" rx="12" fill="url(#gAI)" stroke="#a1761f" stroke-width="1.6"/>
+        <text x="878" y="268" text-anchor="middle" fill="#fde68a" font-size="13.5" font-weight="600">The reveal</text>
+        <text x="878" y="286" text-anchor="middle" fill="#d9b878" font-size="10.5">per-fragment kill</text>
+        <text x="878" y="301" text-anchor="middle" fill="#bb9a5e" font-size="10.5">never a blend</text>
+
+        <rect x="982" y="240" width="140" height="72" rx="12" fill="url(#gBox)" stroke="#2f7d76"/>
+        <text x="1052" y="268" text-anchor="middle" fill="#e8eefc" font-size="13.5" font-weight="600">Timeline</text>
+        <text x="1052" y="286" text-anchor="middle" fill="#8fbfba" font-size="10.5">asymmetric cross-fade</text>
+        <text x="1052" y="301" text-anchor="middle" fill="#8fbfba" font-size="10.5">upper layer only</text>
+
+        <text x="964" y="366" text-anchor="middle" fill="#4a8f8a" font-size="11" font-style="italic">smoke-tested in real Chrome —</text>
+        <text x="964" y="383" text-anchor="middle" fill="#4a8f8a" font-size="11" font-style="italic">zero external requests, zero errors,</text>
+        <text x="964" y="400" text-anchor="middle" fill="#4a8f8a" font-size="11" font-style="italic">scrubbing provably changes pixels</text>
+
+        <!-- arrows -->
+        <line x1="180" y1="158" x2="208" y2="158" stroke="#4a6595" stroke-width="2" marker-end="url(#ah)"/>
+        <path d="M284,194 Q284,218 214,235 L186,258 M284,194 L284,214 Q284,230 254,244" fill="none" stroke="none"/>
+        <path d="M270,194 Q240,225 180,262" fill="none" stroke="#a1761f" stroke-width="2" marker-end="url(#ahA)"/>
+        <line x1="180" y1="276" x2="208" y2="276" stroke="#a1761f" stroke-width="2" marker-end="url(#ahA)"/>
+        <path d="M298,194 Q310,215 298,234" fill="none" stroke="#4a6595" stroke-width="2" marker-end="url(#ah)"/>
+        <line x1="354" y1="276" x2="418" y2="158" stroke="#4a6595" stroke-width="0" />
+        <path d="M354,270 Q392,230 418,166" fill="none" stroke="#4a6595" stroke-width="2" marker-end="url(#ah)"/>
+        <line x1="564" y1="158" x2="592" y2="158" stroke="#8a6d2a" stroke-width="2" marker-end="url(#ahA)"/>
+        <path d="M668,194 Q668,214 570,248 M654,194 Q610,225 566,252" fill="none" stroke="none"/>
+        <path d="M654,194 Q606,228 566,256" fill="none" stroke="#8a6d2a" stroke-width="2" marker-end="url(#ahA)"/>
+        <line x1="564" y1="276" x2="592" y2="276" stroke="#8a6d2a" stroke-width="2" marker-end="url(#ahA)"/>
+        <path d="M738,270 Q776,230 802,166" fill="none" stroke="#4a6595" stroke-width="2" marker-end="url(#ah)"/>
+        <line x1="948" y1="158" x2="976" y2="158" stroke="#4a6595" stroke-width="2" marker-end="url(#ah)"/>
+        <path d="M1038,194 Q990,228 950,256" fill="none" stroke="#4a6595" stroke-width="2" marker-end="url(#ah)"/>
+        <line x1="948" y1="276" x2="976" y2="276" stroke="#4a6595" stroke-width="2" marker-end="url(#ah)"/>
+
+        <!-- bottom captions -->
+        <text x="580" y="472" text-anchor="middle" fill="#6d7fa5" font-size="13">
+          Splitting at the Zarr boundary is the survivability decision: getting a colour wrong costs an hour on a laptop,
+        </text>
+        <text x="580" y="494" text-anchor="middle" fill="#6d7fa5" font-size="13">
+          not another rented GPU session. The whole right-hand column already runs — against real 2021 typhoon data.
+        </text>
+        <text x="580" y="530" text-anchor="middle" fill="#4a6595" font-size="11.5" font-style="italic">
+          The forecast stage mirrors NVIDIA's own shipped example (SFNO → map_coords → CorrDiffTaiwan, Typhoon Doksuri) — the chain is validated, not experimental.
+        </text>
+      </svg>
+
+      <div class="legend">
+        <span><i style="background:#2b4a70"></i>GPU — once, then switched off</span>
+        <span><i style="background:#8a6d2a"></i>Laptop — free to repeat forever</span>
+        <span><i style="background:#a1761f"></i>The generative hero path</span>
+        <span><i style="background:#276b66"></i>Visitor's machine — static files only</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════ WHAT MEASUREMENT CHANGED ══════════════════ -->
+  <section>
+    <h2>What measurement overturned</h2>
+    <p class="h2sub">Five things the concept assumed, corrected by downloading the models and reading their source — before they could cost a weekend.</p>
+
+    <div class="grid3">
+      <div class="flip">
+        <div class="was">A reveal on radar reflectivity</div>
+        <div class="now">The reveal is <em>10 m wind speed</em></div>
+        <div class="why">The coarse model produces no reflectivity at all — there is no "before" to show. Reflectivity becomes its own panel: a field the coarse model cannot make.</div>
+      </div>
+      <div class="flip">
+        <div class="was">"Pick a hero region"</div>
+        <div class="now">Taiwan — <em>not a choice</em></div>
+        <div class="why">Exactly one public kilometre-scale CorrDiff checkpoint exists, and Taiwan is baked into its weights. Europe returns HTTP 401; CONUS is gated.</div>
+      </div>
+      <div class="flip">
+        <div class="was">FourCastNet-3 as the global model</div>
+        <div class="now"><em>SFNO</em> — half the GPU</div>
+        <div class="why">FCN3 wants 80 GB and has a documented unresolved OOM on 46 GB cards. SFNO runs on the 40 GB class and is the model in NVIDIA's validated example.</div>
+      </div>
+      <div class="flip">
+        <div class="was">Output "446×446", docs say 3 km</div>
+        <div class="now"><em>448×448 · 2.0684 km</em> — measured</div>
+        <div class="why">Read from the actual XLAT/XLONG tensors. The concept's ~2 km was right and earth2studio's own example page is wrong.</div>
+      </div>
+      <div class="flip">
+        <div class="was">Paint the output straight onto the globe</div>
+        <div class="now">A <em>regrid stage is mandatory</em></div>
+        <div class="why">The grid is rotated: longitude drifts up to 37 km down one column. Painted as-is, Taiwan's weather would sit 9% of the island away from where it belongs.</div>
+      </div>
+      <div class="flip">
+        <div class="was">"First AI weather globe"</div>
+        <div class="now">Claim the <em>architecture</em>, not novelty</div>
+        <div class="why">NVIDIA and DeepMind ship AI weather visuals — but every interactive Earth-2 visual NVIDIA ships needs a GPU at view time. Ours is a folder of files. That claim survived every attempt to falsify it.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════ THE NUMBERS ══════════════════ -->
+  <section>
+    <h2>The two numbers the project rests on</h2>
+    <p class="h2sub">Both measured from real data inside NVIDIA's freely downloadable package — no GPU, no credentials, reproducible by one script.</p>
+
+    <div class="grid2">
+      <div class="stat">
+        <div class="n">23.6 → <b>52.2</b> m/s</div>
+        <div class="cap">Peak 10 m wind over the same sea, same moment, during Typhoon Chanthu.
+        The 25 km model does not render the eyewall blurrily — <b>it cannot represent it at all.</b>
+        The coarse layer only ever reaches the lower half of the shared colour ramp; that asymmetry <i>is</i> the finding, rendered.</div>
+      </div>
+      <div class="stat">
+        <div class="n">1,440 → <b>200,704</b> cells</div>
+        <div class="cap">Grid cells in, grid cells out: 36×40 at ~25 km becomes 448×448 at ~2.07 km — a <b>139×</b> increase,
+        every new cell generated by a diffusion model that has learned what fine-scale atmosphere looks like.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════ COLOUR IDENTITY ══════════════════ -->
+  <section>
+    <h2>The bug that would have ruined the reveal</h2>
+    <p class="h2sub">Probe 3 painted the globe one flat colour and sampled the rendered pixel at two camera heights. It should be identical. With Cesium's defaults, it is not.</p>
+
+    <div class="card">
+      <svg viewBox="0 0 1160 320" role="img" aria-label="Colour contamination measurement: defaults shift dark colours by up to 77 of 255; four lines make the delta exactly zero">
+        <!-- authored swatch -->
+        <text x="115" y="46" text-anchor="middle" fill="#6d7fa5" font-size="11.5" font-weight="700" letter-spacing="1.8">AUTHORED BYTES</text>
+        <rect x="65" y="62" width="100" height="100" rx="10" fill="rgb(20,30,60)" stroke="#2c3d63"/>
+        <text x="115" y="186" text-anchor="middle" fill="#a9b8d8" font-size="12" font-family="monospace">(20, 30, 60)</text>
+        <text x="115" y="204" text-anchor="middle" fill="#6d7fa5" font-size="11">a dark ramp value — where</text>
+        <text x="115" y="219" text-anchor="middle" fill="#6d7fa5" font-size="11">most of a weather field lives</text>
+
+        <!-- defaults arm -->
+        <text x="330" y="46" text-anchor="middle" fill="#fb7185" font-size="11.5" font-weight="700" letter-spacing="1.8">CESIUM DEFAULTS</text>
+        <path d="M172,104 L232,90" stroke="#fb7185" stroke-width="2" fill="none"/>
+        <rect x="240" y="62" width="86" height="86" rx="10" fill="rgb(54,85,137)" stroke="#4a3040"/>
+        <text x="283" y="168" text-anchor="middle" fill="#fb9aa8" font-size="11.5" font-family="monospace">(54, 85, 137)</text>
+        <text x="283" y="186" text-anchor="middle" fill="#6d7fa5" font-size="10.5">globe zoom</text>
+        <text x="283" y="203" text-anchor="middle" fill="#fb7185" font-size="11" font-weight="700">CONTAMINATED</text>
+        <text x="283" y="220" text-anchor="middle" fill="#c86a7c" font-size="10.5">Δ +34, +55, <tspan font-weight="700">+77</tspan></text>
+
+        <rect x="352" y="62" width="86" height="86" rx="10" fill="rgb(20,30,60)" stroke="#2c3d63"/>
+        <text x="395" y="168" text-anchor="middle" fill="#a9b8d8" font-size="11.5" font-family="monospace">(20, 30, 60)</text>
+        <text x="395" y="186" text-anchor="middle" fill="#6d7fa5" font-size="10.5">hero zoom</text>
+        <text x="395" y="203" text-anchor="middle" fill="#a9b8d8" font-size="11">exact</text>
+
+        <text x="330" y="256" text-anchor="middle" fill="#c86a7c" font-size="12">The whole field changes colour <tspan font-style="italic">during the fly-down</tspan> —</text>
+        <text x="330" y="274" text-anchor="middle" fill="#c86a7c" font-size="12">the viewer reads "the data changed"</text>
+        <text x="330" y="292" text-anchor="middle" fill="#c86a7c" font-size="12">before the reveal even starts.</text>
+
+        <!-- divider -->
+        <line x1="510" y1="36" x2="510" y2="296" stroke="#22304f" stroke-width="1.5"/>
+
+        <!-- fixed arm -->
+        <text x="640" y="46" text-anchor="middle" fill="#4ade80" font-size="11.5" font-weight="700" letter-spacing="1.8">THE FOUR LINES · §7.2(c)</text>
+        <rect x="550" y="62" width="86" height="86" rx="10" fill="rgb(20,30,60)" stroke="#2c3d63"/>
+        <text x="593" y="168" text-anchor="middle" fill="#a9b8d8" font-size="11.5" font-family="monospace">(20, 30, 60)</text>
+        <text x="593" y="186" text-anchor="middle" fill="#6d7fa5" font-size="10.5">globe zoom</text>
+        <text x="593" y="203" text-anchor="middle" fill="#4ade80" font-size="11" font-weight="700">IDENTICAL</text>
+
+        <rect x="662" y="62" width="86" height="86" rx="10" fill="rgb(20,30,60)" stroke="#2c3d63"/>
+        <text x="705" y="168" text-anchor="middle" fill="#a9b8d8" font-size="11.5" font-family="monospace">(20, 30, 60)</text>
+        <text x="705" y="186" text-anchor="middle" fill="#6d7fa5" font-size="10.5">hero zoom</text>
+        <text x="705" y="203" text-anchor="middle" fill="#4ade80" font-size="11" font-weight="700">IDENTICAL</text>
+
+        <text x="649" y="256" text-anchor="middle" fill="#6d7fa5" font-size="12">The wipe itself was clean even on defaults —</text>
+        <text x="649" y="274" text-anchor="middle" fill="#6d7fa5" font-size="12">a per-fragment kill, no blending. The probe is now</text>
+        <text x="649" y="292" text-anchor="middle" fill="#6d7fa5" font-size="12">a regression test: non-zero exit if this returns.</text>
+
+        <!-- code column -->
+        <rect x="800" y="52" width="332" height="160" rx="12" fill="#0b1226" stroke="#22304f"/>
+        <text x="822" y="86" fill="#e8eefc" font-size="12" font-family="monospace">globe.showGroundAtmosphere</text>
+        <text x="822" y="104" fill="#6d7fa5" font-size="12" font-family="monospace">    = false;</text>
+        <text x="822" y="128" fill="#e8eefc" font-size="12" font-family="monospace">scene.fog.enabled = false;</text>
+        <text x="822" y="152" fill="#e8eefc" font-size="12" font-family="monospace">assert !highDynamicRange</text>
+        <text x="822" y="176" fill="#e8eefc" font-size="12" font-family="monospace">assert !enableLighting</text>
+        <text x="822" y="200" fill="#4ade80" font-size="11.5" font-family="monospace">// Δ = (0,0,0) — measured</text>
+        <text x="966" y="240" text-anchor="middle" fill="#6d7fa5" font-size="11.5">Four lines. Not compensation —</text>
+        <text x="966" y="257" text-anchor="middle" fill="#6d7fa5" font-size="11.5">the contamination is removed entirely,</text>
+        <text x="966" y="274" text-anchor="middle" fill="#6d7fa5" font-size="11.5">and SkyAtmosphere restores the halo.</text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- ══════════════════ PAYLOAD ══════════════════ -->
+  <section>
+    <h2>The payload, measured</h2>
+    <p class="h2sub">Every band below comes from encoding real fields at final geometry — typhoon-weighted, because that is what the hero run will look like. Real coastlines cost 2.3× the synthetic estimate on global layers, so the global cadence dropped to 12-hourly and the budget still clears.</p>
+
+    <div class="card">
+      <svg viewBox="0 0 1160 210" role="img" aria-label="Stacked payload bar: 9.0 MB fully loaded against a 12 MB ceiling">
+        <!-- scale -->
+        <line x1="60" y1="40" x2="60" y2="120" stroke="#22304f"/>
+        <line x1="1100" y1="40" x2="1100" y2="120" stroke="#22304f"/>
+        <!-- ceiling track: 12 MB = 1040 px -->
+        <rect x="60" y="52" width="1040" height="56" rx="10" fill="#0b1226" stroke="#22304f"/>
+
+        <!-- bands: px = MB/12*1040 -->
+        <!-- core 1.79 -> 155 -->
+        <rect x="60" y="52" width="155" height="56" fill="#2b4a70"/>
+        <!-- hero 3.04 -> 263 -->
+        <rect x="215" y="52" width="263" height="56" fill="#a1761f"/>
+        <!-- global eager 2.54 -> 220 -->
+        <rect x="478" y="52" width="220" height="56" fill="#276b66"/>
+        <!-- lazy 1.63 -> 141 -->
+        <rect x="698" y="52" width="141" height="56" fill="#33255c"/>
+        <!-- reserve to 12 -->
+        <rect x="839" y="52" width="261" height="56" fill="none" stroke="#2c3d63" stroke-dasharray="5 5"/>
+
+        <!-- fully-loaded marker at 9.0 MB -> x=60+780=840 -->
+        <line x1="840" y1="34" x2="840" y2="126" stroke="#4ade80" stroke-width="2"/>
+        <text x="840" y="26" text-anchor="middle" fill="#4ade80" font-size="12" font-weight="700">9.0 MB fully loaded</text>
+
+        <text x="1100" y="26" text-anchor="middle" fill="#fb7185" font-size="12" font-weight="700">12 MB ceiling — CI gate</text>
+
+        <!-- band labels -->
+        <text x="137" y="86" text-anchor="middle" fill="#cfe0f5" font-size="11.5" font-weight="600">core 1.79</text>
+        <text x="346" y="80" text-anchor="middle" fill="#fde68a" font-size="11.5" font-weight="600">hero 3.04</text>
+        <text x="346" y="96" text-anchor="middle" fill="#d9b878" font-size="10">wind · mrr · ensemble</text>
+        <text x="588" y="80" text-anchor="middle" fill="#b7ede7" font-size="11.5" font-weight="600">global 2.54</text>
+        <text x="588" y="96" text-anchor="middle" fill="#7cc9c1" font-size="10">t2m · wind · 11 steps</text>
+        <text x="768" y="80" text-anchor="middle" fill="#cabffa" font-size="11.5" font-weight="600">lazy 1.63</text>
+        <text x="969" y="86" text-anchor="middle" fill="#6d7fa5" font-size="11.5" font-style="italic">reserve 3.0</text>
+
+        <!-- first interactive marker: 2.0 MB -> x=60+173=233 -->
+        <line x1="233" y1="108" x2="233" y2="148" stroke="#4fd1c5" stroke-width="2"/>
+        <text x="238" y="146" fill="#4fd1c5" font-size="11.5">≈2.0 MB — globe is already interactive, the rest streams in behind it</text>
+
+        <text x="580" y="186" text-anchor="middle" fill="#6d7fa5" font-size="12.5">
+          The entire "before" layer costs ~1 KB per frame at its honest 36×40 native resolution — the comparison is essentially free.
+        </text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- ══════════════════ PROBES ══════════════════ -->
+  <section>
+    <h2>Probes — cheap experiments before expensive weekends</h2>
+    <p class="h2sub">Each one converts an "I hope this works" into a yes or a no, before the GPU meter exists. Four are done; everything found so far cost nothing.</p>
+
+    <div class="card">
+      <table class="probes">
+        <tr><th>#</th><th>Question it answers</th><th>Cost</th><th>Status</th><th>What it found</th></tr>
+        <tr><td>0</td><td><b>Will AWS let us start a GPU at all?</b> Quota request L-DB2E81BA — default is zero, human review</td><td>$0</td><td class="todo">file now</td><td>the only probe with a queue in front of it</td></tr>
+        <tr><td>1</td><td><b>Does the model chain actually run?</b> NVIDIA's own example, verbatim, on Doksuri</td><td>~$1</td><td class="todo">first GPU hour</td><td>fails on their code, not ours — a different problem entirely</td></tr>
+        <tr><td>2</td><td><b>Is the docs' story about CorrDiff true?</b></td><td>$0</td><td class="done">done</td><td>2.0684 km (docs wrong) · 448×448 · rotated grid, 37 km drift · both licences read · the 2.21× wind number</td></tr>
+        <tr><td>3</td><td><b>Does the globe recolour our data?</b></td><td>$0</td><td class="done">done</td><td>+77/255 on dark values by default · four lines make it exactly zero · now a permanent regression test</td></tr>
+        <tr><td>4</td><td><b>Are the payload estimates real?</b></td><td>$0</td><td class="done">done</td><td>hero holds · global 2.3× worse · cadence dropped · lossy &amp; packed-blob alternatives measured dead</td></tr>
+        <tr><td>5</td><td><b>Does the GPU deadman switch fire?</b> t3.micro rehearsal</td><td>$0.01</td><td class="todo">before GPU day</td><td>validates the only cost control fast enough to matter</td></tr>
+        <tr><td>6</td><td><b>Can the target laptop hold the textures?</b></td><td>$0</td><td class="todo">any evening</td><td>—</td></tr>
+        <tr><td>7</td><td><b>Is the $15 capped plan available to this account?</b></td><td>$0</td><td class="todo">2 min, console</td><td>the load-bearing assumption of the whole cost design</td></tr>
+        <tr><td>—</td><td><b>Does the renderer work on real data?</b> <span style="color:var(--ink3)">(unplanned — fell out of Probe 2's download)</span></td><td>$0</td><td class="done">done</td><td>the reveal runs on localhost against Typhoon Chanthu — eyewall on the fine side, blob on the coarse, zero errors in real Chrome</td></tr>
+      </table>
+    </div>
+
+    <p class="note"><b>The discipline:</b> the GPU session is the only unrecoverable spend in the project,
+    so every unknown that can be retired for pennies gets retired first. The renderer being provably
+    finished against real data means GPU day has exactly one job: produce the forecast.</p>
+  </section>
+
+  <!-- ══════════════════ MILESTONES ══════════════════ -->
+  <section>
+    <h2>Where the project stands</h2>
+    <p class="h2sub">Revised milestones — the hero mechanics arrived early because real sample data made them buildable without a GPU.</p>
+
+    <div class="card">
+      <svg viewBox="0 0 1160 150" role="img" aria-label="Milestone track M0 to M6 with current position between M2 and M3">
+        <line x1="70" y1="60" x2="1090" y2="60" stroke="#22304f" stroke-width="3"/>
+        <!-- progress -->
+        <line x1="70" y1="60" x2="560" y2="60" stroke="#4fd1c5" stroke-width="3"/>
+
+        <!-- nodes -->
+        <circle cx="70" cy="60" r="9" fill="#4fd1c5"/>
+        <text x="70" y="34" text-anchor="middle" fill="#4fd1c5" font-size="12" font-weight="700">M0</text>
+        <text x="70" y="92" text-anchor="middle" fill="#a9b8d8" font-size="10.5">probes</text>
+        <text x="70" y="107" text-anchor="middle" fill="#6d7fa5" font-size="10">4 of 8 done</text>
+
+        <circle cx="240" cy="60" r="9" fill="#4fd1c5"/>
+        <text x="240" y="34" text-anchor="middle" fill="#4fd1c5" font-size="12" font-weight="700">M1</text>
+        <text x="240" y="92" text-anchor="middle" fill="#a9b8d8" font-size="10.5">globe live</text>
+        <text x="240" y="107" text-anchor="middle" fill="#6d7fa5" font-size="10">local — deploy pending</text>
+
+        <circle cx="410" cy="60" r="9" fill="#4fd1c5"/>
+        <text x="410" y="34" text-anchor="middle" fill="#4fd1c5" font-size="12" font-weight="700">M2</text>
+        <text x="410" y="92" text-anchor="middle" fill="#a9b8d8" font-size="10.5">data moving</text>
+        <text x="410" y="107" text-anchor="middle" fill="#6d7fa5" font-size="10">5 real frames scrub</text>
+
+        <circle cx="580" cy="60" r="11" fill="#0d1730" stroke="#fbbf24" stroke-width="3"/>
+        <text x="580" y="34" text-anchor="middle" fill="#fbbf24" font-size="12" font-weight="700">M3</text>
+        <text x="580" y="92" text-anchor="middle" fill="#fde68a" font-size="10.5">the reveal</text>
+        <text x="580" y="107" text-anchor="middle" fill="#bb9a5e" font-size="10">mechanics proven · awaits our own forecast</text>
+
+        <circle cx="750" cy="60" r="9" fill="#0d1730" stroke="#2c3d63" stroke-width="2"/>
+        <text x="750" y="34" text-anchor="middle" fill="#6d7fa5" font-size="12" font-weight="700">M4</text>
+        <text x="750" y="92" text-anchor="middle" fill="#6d7fa5" font-size="10.5">GPU forecast day</text>
+        <text x="750" y="107" text-anchor="middle" fill="#4a5f85" font-size="10">Gaemi 2024 · blocked on quota</text>
+
+        <circle cx="920" cy="60" r="9" fill="#0d1730" stroke="#2c3d63" stroke-width="2"/>
+        <text x="920" y="34" text-anchor="middle" fill="#6d7fa5" font-size="12" font-weight="700">M5</text>
+        <text x="920" y="92" text-anchor="middle" fill="#6d7fa5" font-size="10.5">make it art</text>
+        <text x="920" y="107" text-anchor="middle" fill="#4a5f85" font-size="10">dark globe · fly-down · polish</text>
+
+        <circle cx="1090" cy="60" r="9" fill="#0d1730" stroke="#2c3d63" stroke-width="2"/>
+        <text x="1090" y="34" text-anchor="middle" fill="#6d7fa5" font-size="12" font-weight="700">M6</text>
+        <text x="1090" y="92" text-anchor="middle" fill="#6d7fa5" font-size="10.5">ship</text>
+        <text x="1090" y="107" text-anchor="middle" fill="#4a5f85" font-size="10">public link · video · launch</text>
+
+        <text x="580" y="140" text-anchor="middle" fill="#6d7fa5" font-size="12">
+          One GPU day now stands between here and a public link — and it runs a chain NVIDIA has already tested.
+        </text>
+      </svg>
+    </div>
+  </section>
+
+  <footer>
+    <p><b>Latent Sky</b> · architecture v0.4 · full document at <b>DOCS/Architecture.md</b> · concept at <b>DOCS/concept.md</b><br>
+    Every number on this page is measured, and every measurement has a script in <b>probes/</b> that reproduces it.<br>
+    <span style="color:#4a5f85">Development imagery derives from a CC BY-NC-ND sample and is therefore drawn, not embedded, on this page.</span></p>
+  </footer>
+
+</div>
+</body>
+</html>

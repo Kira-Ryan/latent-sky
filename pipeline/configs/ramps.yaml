@@ -1,0 +1,69 @@
+# Latent Sky colour ramps — Architecture.md §7.1, verbatim.
+#
+# vmin/vmax are GLOBAL per variable: identical for coarse and fine, for every frame,
+# forever. Per-layer autoscale is a build failure (§7.2b), enforced in manifest.py.
+# The wind and reflectivity ranges are MEASURED from the package's five real sample
+# timesteps (Probe 2), one of which is Typhoon Chanthu (2021-09-12).
+#
+# Ramps are baked ONCE into 256x1 RGBA LUT PNGs (luts/<var>.lut.png) by
+# `python -m latentsky.ramps`. The encoder indexes the file and never calls a
+# colormap library at encode time (§7.2a).
+#
+# alpha:
+#   policy: opaque            -> alpha = 255 everywhere
+#   policy: ramp              -> alpha = 0 at values <= zero_below, linear to 255 by one_by
+#
+# All colormap sources are MIT: Crameri 8.0.1 (cmcrameri), cmocean, cmweather.
+
+wind10m:
+  label: "10 m wind speed"
+  units: "m/s"
+  cmap: "cmcrameri:batlowK"     # published explicitly for dark backgrounds
+  vmin: 0.0
+  vmax: 55.0                    # measured fine max 52.24 m/s — 0-40 would clip the typhoon
+  alpha:
+    policy: ramp
+    zero_below: 2.0
+    one_by: 6.0
+
+t2m:
+  label: "2 m temperature"
+  units: "K"
+  cmap: "cmocean:thermal"
+  vmin: 233.15
+  vmax: 323.15
+  alpha:
+    policy: opaque
+
+mrr:
+  label: "Radar reflectivity"
+  units: "dBZ"                  # dBZ is already logarithmic — the ramp is linear in dBZ
+  cmap: "cmweather:ChaseSpectral"
+  vmin: 0.0
+  vmax: 55.0                    # measured max 52.35 dBZ; -10..65 wastes a fifth of the ramp
+  alpha:
+    policy: ramp
+    zero_below: 0.0
+    one_by: 5.0
+
+tcwv:
+  label: "Total column water vapour"
+  units: "kg/m²"
+  cmap: "cmcrameri:davos"
+  vmin: 0.0
+  vmax: 70.0
+  alpha:
+    policy: opaque
+
+msl:
+  label: "Mean sea-level pressure"
+  units: "hPa"
+  cmap: "cmcrameri:vik"         # diverging, midpoint 1013.25 hPa (§7.1)
+  # §7.1 fixes only the midpoint. The span is symmetric about it so the ramp's neutral
+  # centre sits exactly on 1013.25 hPa; ±80 hPa is provisional until the first GPU run
+  # measures the real MSLP span (msl is not encodable from the dev sample anyway).
+  vmin: 933.25
+  vmax: 1093.25
+  midpoint: 1013.25
+  alpha:
+    policy: opaque

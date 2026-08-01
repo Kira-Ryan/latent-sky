@@ -1,0 +1,23 @@
+Latent Sky
+Copyright (c) 2026 Kira Ryan
+
+This project incorporates or derives from the following third-party work.
+Full per-asset audit with hashes and check dates: licences/MANIFEST.yaml.
+
+CesiumJS — Apache-2.0. Copyright Cesium GS, Inc.
+earth2studio — Apache-2.0. Copyright NVIDIA Corporation.
+SFNO and CorrDiff model checkpoints — Apache-2.0. Copyright NVIDIA Corporation.
+Scientific colour maps (batlowK, davos, vik) — MIT. Fabio Crameri, via cmcrameri.
+cmocean colour maps (thermal) — MIT. Kristen Thyng et al.
+cmweather colour maps (ChaseSpectral) — MIT. cmweather developers.
+Natural Earth basemap data — public domain.
+
+ERA5 data: contains modified Copernicus Climate Change Service information [2026].
+Neither the European Commission nor ECMWF is responsible for any use of that information.
+
+Derived NOAA data products in this project do not state or imply that they are
+original, unaltered NOAA data.
+
+The CorrDiff inference package's bundled sample dataset (CWA/WRF, CC BY-NC-ND 4.0)
+is used for local development only and is not distributed with, nor rendered by,
+the published site.

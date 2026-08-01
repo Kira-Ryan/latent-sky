@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "run": {
+    "id": "synthetic-swirl",
+    "kind": "dev-sample",
+    "model": {
+      "prognostic": "synthetic \u2014 procedural swirl (latentsky.make_sample)",
+      "downscaling": "synthetic \u2014 Gaussian-smoothed swirl (fixture)"
+    },
+    "generatedNote": "Synthetic fixture data \u2014 a procedural swirl field produced by latentsky.make_sample so that CI and the web app have licence-clean data. Not model output, not observations, and not a forecast."
+  },
+  "frames": [
+    "2000-01-01T00:00:00Z",
+    "2000-01-01T06:00:00Z"
+  ],
+  "layers": {
+    "wind10m-fine": {
+      "kind": "hero-fine",
+      "variable": "wind10m",
+      "label": "10 m wind speed \u2014 synthetic fine",
+      "units": "m/s",
+      "rect": [
+        119.71298941551942,
+        22.31973397766179,
+        122.28701058448058,
+        24.68026602233821
+      ],
+      "size": [
+        64,
+        64
+      ],
+      "lut": "luts/wind10m.lut.png",
+      "vmin": 0.0,
+      "vmax": 55.0,
+      "identity": "35fa35aab38a6d5672c63b3110b4700b0e30305923e4a4e3b77c5b945c0a790a",
+      "frames": [
+        "layers/wind10m-fine/000.webp",
+        "layers/wind10m-fine/001.webp"
+      ],
+      "pairWith": "wind10m-coarse"
+    },
+    "wind10m-coarse": {
+      "kind": "hero-coarse",
+      "variable": "wind10m",
+      "label": "10 m wind speed \u2014 synthetic coarse",
+      "units": "m/s",
+      "rect": [
+        119.71298941551942,
+        22.31973397766179,
+        122.28701058448058,
+        24.68026602233821
+      ],
+      "size": [
+        64,
+        64
+      ],
+      "lut": "luts/wind10m.lut.png",
+      "vmin": 0.0,
+      "vmax": 55.0,
+      "identity": "35fa35aab38a6d5672c63b3110b4700b0e30305923e4a4e3b77c5b945c0a790a",
+      "frames": [
+        "layers/wind10m-coarse/000.webp",
+        "layers/wind10m-coarse/001.webp"
+      ],
+      "pairWith": "wind10m-fine"
+    }
+  }
+}

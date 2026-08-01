@@ -1,0 +1,161 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Probe 3 — colour identity across the reveal</title>
+<style>
+  html,body{margin:0;background:#000}
+  #c{width:900px;height:600px}
+</style>
+<link rel="stylesheet" href="/cesium/Widgets/widgets.css">
+<div id="c"></div>
+<script src="/cesium/Cesium.js"></script>
+<script>
+window.CESIUM_BASE_URL = "/cesium/";
+
+// Two authored colours. The dark one matters most: atmospheric contamination is
+// proportionally worst where the ramp is darkest, which on a dark globe is where
+// most of a weather field lives.
+const COLOURS = {
+  mid:  [ 64, 160, 208, 255],
+  dark: [ 20,  30,  60, 255],
+};
+
+// Camera framings. lightingFadeOutDistance defaults to ~9,985 km FROM EARTH'S CENTRE,
+// so 'globe' sits well beyond it and 'hero' well inside — the two ends of the reveal.
+const VIEWS = {
+  globe: 15_000_000,
+  hero:      250_000,
+};
+
+const TARGET = { lon: 120.9, lat: 23.7 };
+const RECT   = [100, 5, 140, 40];   // big enough to fill the sample point at both framings
+
+function solidPng([r, g, b, a]) {
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 64;
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle = `rgba(${r},${g},${b},${a / 255})`;
+  ctx.fillRect(0, 0, 64, 64);
+  return cv.toDataURL("image/png");
+}
+
+let widget, scene, globe, layers = [];
+
+async function boot() {
+  Cesium.Ion.defaultAccessToken = "";           // no ion, no network, no quota
+  widget = new Cesium.CesiumWidget("c", {
+    baseLayer: false,                            // nothing under our test layers
+    terrainProvider: new Cesium.EllipsoidTerrainProvider(),
+    skyBox: false,
+    contextOptions: { webgl: { preserveDrawingBuffer: true } },
+    requestRenderMode: false,
+  });
+  scene = widget.scene;
+  globe = scene.globe;
+  globe.baseColor = Cesium.Color.BLACK;
+
+  const rect = Cesium.Rectangle.fromDegrees(...RECT);
+  for (const key of ["mid", "dark"]) {
+    const p = await Cesium.SingleTileImageryProvider.fromUrl(solidPng(COLOURS[key]), {
+      rectangle: rect, tileWidth: 64, tileHeight: 64,
+    });
+    const l = scene.imageryLayers.addImageryProvider(p);
+    l.show = key === "mid";
+    layers.push({ key, layer: l });
+  }
+  return {
+    cesium: Cesium.VERSION,
+    defaults: {
+      showGroundAtmosphere: globe.showGroundAtmosphere,
+      fogEnabled: scene.fog.enabled,
+      enableLighting: globe.enableLighting,
+      highDynamicRange: scene.highDynamicRange,
+      msaaSamples: scene.msaaSamples,
+      hasSplitPosition: "splitPosition" in scene,
+    },
+  };
+}
+
+function applyConfig(mode) {
+  if (mode === "defaults") {
+    globe.showGroundAtmosphere = true;
+    scene.fog.enabled = true;
+  } else {
+    // The four load-bearing lines from Architecture.md 7.2(c)
+    globe.showGroundAtmosphere = false;
+    scene.fog.enabled = false;
+    console.assert(scene.highDynamicRange === false, "HDR must be off");
+    console.assert(globe.enableLighting === false, "lighting must be off");
+  }
+}
+
+const raf = () => new Promise(r => requestAnimationFrame(r));
+async function settle(n = 12) { for (let i = 0; i < n; i++) await raf(); }
+
+function sample(x, y) {
+  const c = widget.canvas;
+  const tmp = document.createElement("canvas");
+  tmp.width = c.width; tmp.height = c.height;
+  tmp.getContext("2d").drawImage(c, 0, 0);
+  const d = tmp.getContext("2d").getImageData(Math.round(x), Math.round(y), 1, 1).data;
+  return [d[0], d[1], d[2]];
+}
+
+async function look(view) {
+  scene.camera.setView({
+    destination: Cesium.Cartesian3.fromDegrees(TARGET.lon, TARGET.lat, VIEWS[view]),
+  });
+  await settle();
+}
+
+function showOnly(key) { for (const l of layers) l.layer.show = l.key === key; }
+
+window.runProbe = async () => {
+  const meta = await boot();
+  await settle(30);
+  const c = widget.canvas;
+  const cx = c.width / 2, cy = c.height / 2;
+  const out = { meta, sameCanvasPixel: [], splitSymmetry: [] };
+
+  // TEST 1 & 2 — the real question. Identical authored bytes, identical canvas pixel,
+  // two camera framings. Any difference is Cesium tinting, not our pipeline.
+  for (const mode of ["defaults", "fixed"]) {
+    for (const colour of ["mid", "dark"]) {
+      showOnly(colour);
+      applyConfig(mode);
+      const row = { mode, colour, authored: COLOURS[colour].slice(0, 3) };
+      for (const view of ["globe", "hero"]) {
+        await look(view);
+        row[view] = sample(cx, cy);
+      }
+      row.delta = row.globe.map((v, i) => v - row.hero[i]);
+      row.identical = row.delta.every(d => d === 0);
+      out.sameCanvasPixel.push(row);
+    }
+  }
+
+  // TEST 3 — split symmetry. Two layers, same authored colour, one LEFT one RIGHT,
+  // sampled at mirrored pixels either side of the divider so geometry is ~equal.
+  const p = await Cesium.SingleTileImageryProvider.fromUrl(solidPng(COLOURS.mid), {
+    rectangle: Cesium.Rectangle.fromDegrees(...RECT), tileWidth: 64, tileHeight: 64,
+  });
+  const twin = scene.imageryLayers.addImageryProvider(p);
+  layers[0].layer.show = true; layers[1].layer.show = false;
+  layers[0].layer.splitDirection = Cesium.SplitDirection.LEFT;
+  twin.splitDirection = Cesium.SplitDirection.RIGHT;
+  if ("splitPosition" in scene) scene.splitPosition = 0.5;
+
+  for (const mode of ["defaults", "fixed"]) {
+    applyConfig(mode);
+    for (const view of ["globe", "hero"]) {
+      await look(view);
+      const left = sample(cx - 40, cy), right = sample(cx + 40, cy);
+      out.splitSymmetry.push({
+        mode, view, left, right,
+        delta: left.map((v, i) => v - right[i]),
+        identical: left.every((v, i) => v === right[i]),
+      });
+    }
+  }
+  return out;
+};
+</script>

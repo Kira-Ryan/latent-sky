@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://latent-sky.dev/schema/manifest.schema.json",
+  "title": "Latent Sky data manifest",
+  "description": "THE contract between pipeline/ (producer) and web/ (consumer). The web app renders only what this file declares; the pipeline emits this file last, after every referenced asset exists and every identity checksum has been verified.",
+  "type": "object",
+  "required": ["schemaVersion", "run", "frames", "layers"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "run": {
+      "type": "object",
+      "required": ["id", "kind", "model", "generatedNote"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "description": "e.g. gaemi-2024-07-24T00Z, or dev-cwb-sample" },
+        "kind": { "enum": ["forecast", "dev-sample"] },
+        "init": { "type": "string", "format": "date-time", "description": "Forecast initialisation time. Absent for dev-sample, whose frames are independent analysis times." },
+        "model": {
+          "type": "object",
+          "required": ["prognostic", "downscaling"],
+          "properties": {
+            "prognostic": { "type": "string" },
+            "downscaling": { "type": "string" }
+          }
+        },
+        "generatedNote": { "type": "string", "description": "The scientific-honesty caption shown in the UI. Required — a build without it fails." }
+      }
+    },
+    "frames": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "format": "date-time" },
+      "description": "Valid times, one per frame index, strictly increasing. Layer frame arrays index into this."
+    },
+    "layers": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["kind", "variable", "label", "units", "rect", "size", "lut", "vmin", "vmax", "identity", "frames"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "enum": ["global", "hero-fine", "hero-coarse"] },
+          "variable": { "enum": ["wind10m", "t2m", "mrr", "tcwv", "msl"] },
+          "label": { "type": "string" },
+          "units": { "type": "string" },
+          "rect": {
+            "type": "array", "prefixItems": [
+              { "type": "number", "description": "west, degrees" },
+              { "type": "number", "description": "south, degrees" },
+              { "type": "number", "description": "east, degrees" },
+              { "type": "number", "description": "north, degrees" }
+            ], "minItems": 4, "maxItems": 4
+          },
+          "size": {
+            "type": "array", "prefixItems": [{ "type": "integer" }, { "type": "integer" }],
+            "minItems": 2, "maxItems": 2, "description": "[width, height] pixels"
+          },
+          "lut": { "type": "string", "description": "Path to the 256x1 RGBA LUT PNG shared by every layer of this variable" },
+          "vmin": { "type": "number" },
+          "vmax": { "type": "number" },
+          "identity": { "type": "string", "description": "sha256 of the canonical (variable, lut sha256, vmin, vmax, alphaPolicy) tuple. The build FAILS if two layers of the same variable disagree. The web app asserts coarse/fine equality again at load." },
+          "frames": {
+            "type": "array", "minItems": 1,
+            "items": { "type": "string" },
+            "description": "Relative WebP path per frame, same length and order as top-level frames"
+          },
+          "pairWith": { "type": "string", "description": "For hero layers: the layer id this one is compared against in the reveal" }
+        }
+      }
+    }
+  }
+}

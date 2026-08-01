@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "latentsky"
+version = "0.1.0"
+description = "Latent Sky encode pipeline: Zarr/npz fields -> regrid -> LUT -> WebP + manifest. Encode side only — the GPU forecast stage has its own environment."
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.26",
+    "zarr>=2.16",
+    "pillow>=11.0",      # WebP `exact=True` verified bit-identical on 12.3.0 (see tests/test_encode.py)
+    "scipy>=1.11",
+    "cmcrameri>=1.8",    # batlowK, davos, vik (MIT)
+    "cmocean>=3.0",      # thermal (MIT)
+    "cmweather>=0.3.2",  # ChaseSpectral (MIT) — last PyPI release, Jan 2024 (Architecture.md §7.2a)
+    "jsonschema>=4.20",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
