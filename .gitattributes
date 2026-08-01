@@ -1,0 +1,23 @@
+# Line-ending policy. The shell scripts and the userdata template MUST stay LF —
+# a CRLF checkout on Windows followed by upload to a Linux instance corrupts the
+# deadman line in userdata.sh.tpl, which is the one safety-critical line in the repo.
+* text=auto
+*.sh   text eol=lf
+*.tpl  text eol=lf
+*.py   text eol=lf
+*.ts   text eol=lf
+*.mjs  text eol=lf
+*.svelte text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.html text eol=lf
+Makefile text eol=lf
+Dockerfile text eol=lf
+
+# Binary assets
+*.webp binary
+*.png  binary
+*.jpg  binary
+*.npz  binary
