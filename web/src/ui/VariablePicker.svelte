@@ -24,7 +24,9 @@
       </button>
     {/each}
   </div>
-  {#if sky.hasPair}
+  {#if sky.hasPair && sky.revealEngaged}
+    <!-- Only meaningful at the hero framing — in orbit the toggle would
+         silently restyle a few dozen pixels of a distant rectangle. -->
     <label class="fine-toggle">
       <input type="checkbox" bind:checked={sky.showFine} />
       Generated detail
@@ -42,6 +44,8 @@
 
   .group {
     display: flex;
+    flex-wrap: wrap; /* below ~560px the pills wrap rather than clip */
+    justify-content: flex-end;
     background: var(--panel);
     border: 1px solid var(--panel-border);
     border-radius: 6px;
@@ -65,7 +69,7 @@
 
   .group button.active {
     color: var(--accent);
-    background: rgba(127, 180, 217, 0.1);
+    background: rgba(79, 209, 197, 0.08);
   }
 
   .fine-toggle {
@@ -82,6 +86,7 @@
   }
 
   .fine-toggle input {
-    accent-color: var(--accent);
+    /* Amber: this toggle governs the generated layer — the hero accent. */
+    accent-color: var(--amber);
   }
 </style>

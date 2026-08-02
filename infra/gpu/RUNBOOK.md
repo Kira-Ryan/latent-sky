@@ -16,10 +16,13 @@ both of which this kit removes. Worst-case cost is bounded by the deadman at ~$9
 - [ ] **Image built**: `docker build -t latentsky-forecast:0.17.0 pipeline/`
       (needs ~25 GB free disk for the NVIDIA base — check first). Then the models
       variant: `docker build --build-arg BAKE_MODELS=1 -t latentsky-forecast:0.17.0-models pipeline/`.
-- [ ] **Local smoke on the RTX 3060** (optional but valuable, $0):
-      `docker run --rm --gpus all latentsky-forecast:0.17.0-models --config /opt/latentsky/configs/event_doksuri_2023.yaml --dry-run`
-      — loads both models and reports VRAM. Expect possible OOM at 12 GB; even that
-      proves the install, the CUDA extensions and the checkpoint paths.
+- [ ] **Local smoke on the RTX 3060** (optional but valuable, $0) — run from **PowerShell**
+      (Git Bash mangles `/opt/...` paths into `C:/Program Files/Git/...`):
+      `docker run --rm --gpus all -v "C:\Users\User\.cache\latentsky-models:/cache/earth2studio" latentsky-forecast:0.17.0 --config /opt/latentsky/configs/event_doksuri_2023.yaml --dry-run`
+      Status 2 Aug 2026: install ✓, 7.9 GB packages cached ✓, checkpoints load on CPU ✓,
+      GPU step blocked by the host's CUDA 12.6-era driver — update the GeForce driver
+      and rerun for the full pass. Rented instances ship current drivers; this blocker
+      is local-only.
 - [ ] **ECR**: repository created; image pushed.
 - [ ] **S3**: bucket created; `BUCKET=<bucket> ./prefetch-models.sh` run once.
 - [ ] **VPC**: public subnet with an **S3 Gateway endpoint** (Endpoints → Gateway →

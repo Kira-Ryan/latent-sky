@@ -33,6 +33,26 @@
       "items": { "type": "string", "format": "date-time" },
       "description": "Valid times, one per frame index, strictly increasing. Layer frame arrays index into this."
     },
+    "basemap": {
+      "type": "object",
+      "description": "Optional offline-baked basemap imagery. Paths relative to the manifest. Licence must be public-domain or CC-BY (audited in licences/MANIFEST.yaml) — basemaps ship.",
+      "additionalProperties": false,
+      "properties": {
+        "global": { "type": "string", "description": "Full-globe equirectangular WebP/PNG, dark-styled" },
+        "globalRect": {
+          "type": "array", "prefixItems": [
+            { "type": "number" }, { "type": "number" }, { "type": "number" }, { "type": "number" }
+          ], "minItems": 4, "maxItems": 4,
+          "description": "west, south, east, north in degrees; defaults to [-180,-90,180,90]"
+        },
+        "hero": { "type": "string", "description": "Crisp regional basemap over the hero rectangle" },
+        "heroRect": {
+          "type": "array", "prefixItems": [
+            { "type": "number" }, { "type": "number" }, { "type": "number" }, { "type": "number" }
+          ], "minItems": 4, "maxItems": 4
+        }
+      }
+    },
     "layers": {
       "type": "object",
       "minProperties": 1,

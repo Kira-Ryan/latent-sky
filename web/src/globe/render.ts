@@ -21,6 +21,13 @@ export interface GlobeState {
   split: number;
   /** When false, the coarse field fills the view (divider pushed fully right). */
   showFine: boolean;
+  /**
+   * The wipe is engaged only at the hero framing (concept §8.4). When false
+   * (orbit, or mid-flight) the divider parks fully off-canvas so the fine
+   * field fills its rectangle — the storm reads whole from orbit, and the
+   * comparison begins only once the camera has arrived.
+   */
+  reveal: boolean;
   playing: boolean;
   /** Playback speed multiplier relative to the timeline's base rate. */
   speed: number;
@@ -53,6 +60,7 @@ export function createRenderer(
     variable: initialVariable,
     split: 0.5,
     showFine: true,
+    reveal: false, // the piece opens in orbit — the wipe waits for arrival
     playing: false,
     speed: 1,
   };
@@ -71,8 +79,13 @@ export function createRenderer(
   function applySplit(): void {
     // §6.3 — splitDirection is a per-fragment kill against czm_splitPosition.
     // showFine=false parks the divider hard right: coarse everywhere, zero
-    // layer churn, zero shader permutation changes.
-    scene.splitPosition = layers?.hasPair && state.showFine ? state.split : 1.0;
+    // layer churn, zero shader permutation changes. reveal=false (orbit /
+    // mid-flight) parks it hard left instead: the fine field fills its rect.
+    if (!(layers?.hasPair && state.showFine)) {
+      scene.splitPosition = 1.0;
+    } else {
+      scene.splitPosition = state.reveal ? state.split : 0.0;
+    }
   }
 
   function applyState(patch: Partial<GlobeState>, options: ApplyOptions = {}): void {
@@ -103,9 +116,10 @@ export function createRenderer(
       clock.multiplier = timeline.baseMultiplier * patch.speed;
     }
 
-    if (patch.split !== undefined || patch.showFine !== undefined) {
+    if (patch.split !== undefined || patch.showFine !== undefined || patch.reveal !== undefined) {
       if (patch.split !== undefined) state.split = Math.min(Math.max(patch.split, 0), 1);
       if (patch.showFine !== undefined) state.showFine = patch.showFine;
+      if (patch.reveal !== undefined) state.reveal = patch.reveal;
       applySplit();
     }
 

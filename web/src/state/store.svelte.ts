@@ -5,6 +5,7 @@
  */
 import {
   availableVariables,
+  globalLayerFor,
   primaryLayerFor,
   type LayerDef,
   type Manifest,
@@ -23,11 +24,34 @@ class SkyStore {
   split = $state(0.5);
   showFine = $state(true);
 
+  /** Where the camera lives: in orbit (arrival state) or down at the hero. */
+  view = $state<"orbit" | "hero">("orbit");
+  /** True for the duration of a camera flight (either direction). */
+  flying = $state(false);
+  /** Set on arrival at the hero: the reveal plays ONE auto-sweep, then rests mid. */
+  sweepPending = $state(false);
+  /** The wipe is engaged only once the camera has settled at the hero (§8.4). */
+  revealEngaged: boolean = $derived(this.view === "hero" && !this.flying);
+
   variables: Variable[] = $derived(this.manifest ? availableVariables(this.manifest) : []);
   frameCount: number = $derived(this.manifest?.frameIso.length ?? 0);
   activeLayer: LayerDef | undefined = $derived(
     this.manifest ? primaryLayerFor(this.manifest, this.variable) : undefined,
   );
+  /**
+   * The layer the legend should describe. From orbit the screen is dominated
+   * by the global field, so its label (e.g. "ERA5 analysis, 0.5°", or t2m's
+   * "clipped below −40 °C" note) is the honest one; the hero-fine label
+   * applies only once the camera is down at the hero. Same LUT either way —
+   * identity is enforced across layers — only the words change.
+   */
+  legendLayer: LayerDef | undefined = $derived.by(() => {
+    if (!this.manifest) return undefined;
+    if (this.view === "orbit") {
+      return globalLayerFor(this.manifest, this.variable) ?? this.activeLayer;
+    }
+    return this.activeLayer;
+  });
   /** Whether the active variable has a coarse/fine hero pair (the reveal). */
   hasPair: boolean = $derived(
     this.activeLayer?.pairWith !== undefined &&

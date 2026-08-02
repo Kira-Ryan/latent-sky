@@ -2,9 +2,12 @@
  * Widget construction — Architecture.md §6.4, §7.2(c), §9.5.
  *
  * Framework-free: Svelte never touches anything constructed here.
- * Zero Cesium ion: empty token, bundled Natural Earth II base layer, ellipsoid
- * terrain, no sky box. The lost atmospheric halo is replaced by SkyAtmosphere,
- * which is a separate object and never touches imagery.
+ * Zero Cesium ion: empty token, ellipsoid terrain, no sky box. The base layer
+ * is the manifest's offline-baked global basemap when one is declared
+ * (pre-styled, served alongside the data); the bundled public-domain Natural
+ * Earth II TMS is the fallback for manifests without one. Either way, zero
+ * requests leave the deployment origin. The lost atmospheric halo is replaced
+ * by SkyAtmosphere, which is a separate object and never touches imagery.
  */
 import {
   CesiumWidget,
@@ -12,24 +15,46 @@ import {
   EllipsoidTerrainProvider,
   ImageryLayer,
   Ion,
+  Rectangle,
+  SingleTileImageryProvider,
   SkyAtmosphere,
   TileMapServiceImageryProvider,
   buildModuleUrl,
 } from "cesium";
+import type { BasemapDef } from "../data/manifest";
 
 export interface WidgetOptions {
   /** Enable preserveDrawingBuffer so tests can read pixels back. Off in production. */
   pixelReadback?: boolean;
 }
 
-export function createWidget(container: HTMLElement, options: WidgetOptions = {}): CesiumWidget {
+function baseLayer(basemap?: BasemapDef): ImageryLayer {
+  if (basemap?.globalUrl !== undefined) {
+    const [west, south, east, north] = basemap.globalRect;
+    return ImageryLayer.fromProviderAsync(
+      SingleTileImageryProvider.fromUrl(basemap.globalUrl, {
+        rectangle: Rectangle.fromDegrees(west, south, east, north),
+      }),
+      {},
+      // No filter/colour options: the basemap arrives pre-styled — §7.2(c),
+      // never touch brightness/contrast/hue/saturation/gamma on any layer.
+    );
+  }
+  return ImageryLayer.fromProviderAsync(
+    TileMapServiceImageryProvider.fromUrl(buildModuleUrl("Assets/Textures/NaturalEarthII")),
+    {},
+  );
+}
+
+export function createWidget(
+  container: HTMLElement,
+  options: WidgetOptions = {},
+  basemap?: BasemapDef,
+): CesiumWidget {
   Ion.defaultAccessToken = ""; // §9.5 — zero ion, zero quota, zero api.cesium.com traffic
 
   const widget = new CesiumWidget(container, {
-    baseLayer: ImageryLayer.fromProviderAsync(
-      TileMapServiceImageryProvider.fromUrl(buildModuleUrl("Assets/Textures/NaturalEarthII")),
-      {},
-    ),
+    baseLayer: baseLayer(basemap),
     terrainProvider: new EllipsoidTerrainProvider(),
     skyBox: false, // also drops 864 KB of star JPEGs a weather globe does not need
     skyAtmosphere: new SkyAtmosphere(),
@@ -52,7 +77,7 @@ export function createWidget(container: HTMLElement, options: WidgetOptions = {}
   // Never touch brightness / contrast / hue / saturation / gamma on any layer.
   // Filters are immutable once a texture loads — layers.ts sets them at construction.
 
-  globe.baseColor = Color.fromCssColorString("#0b0e14"); // designed-quiet: the field is the visual
+  globe.baseColor = Color.fromCssColorString("#070c1a"); // the basemap's ocean — one palette
 
   // Debug back-reference for DevTools and the smoke-test probes. Not an API.
   (container as HTMLElement & { cesiumWidget?: CesiumWidget }).cesiumWidget = widget;

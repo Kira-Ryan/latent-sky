@@ -51,7 +51,10 @@ tcwv:
   units: "kg/m²"
   cmap: "cmcrameri:davos"
   vmin: 0.0
-  vmax: 70.0
+  # 80, not the doc's original 70: real ERA5 over the five dev frames peaks at
+  # 79.58 kg/m² (Chanthu) — a 70 ceiling would saturate exactly the event that
+  # matters. Safe to widen: tcwv has no hero pair, so no identity conflict.
+  vmax: 80.0
   alpha:
     policy: opaque
 

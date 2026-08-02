@@ -8,6 +8,7 @@
 > **Changes in 0.2:** Probe 2 executed. §3.3, §3.4, §5.4, §7.1, §8 and §12 now carry measured values rather than inferred ones. Output grid corrected 446→448.
 > **Changes in 0.3:** Probe 3 executed. §3.7 carries measured contamination figures; the failure is located to the fly-down rather than the wipe. Node ≥ 22 requirement recorded in §6.4.
 > **Changes in 0.4:** Probe 4 executed and the encode pipeline and web app are built and verified against real data. §8 rewritten from measurement. New: §6.5 (request-scheduler starvation), §5.4 footprint mask and grid rule, §7.1 global t2m floor, §8.1 gate metric.
+> **Changes in 0.5:** Global ERA5 layer and the M5 art pass built and verified end to end (dark basemap, fly-down, arrival). Schema gained an optional `basemap` object. tcwv ramp widened 70→80 kg/m² (real Chanthu peaks at 79.58 — measured). §8 row 12 now measured (130 KB/frame); row 1 restated at 0.77 MB brotli; a global dark basemap costs 0.06 MB. Camera motion is owned by a single CameraDirector (the §6.5 starvation class applies to camera tweens too).
 > **Supersedes:** the technology and hosting assumptions in `DOCS/concept.md` §7, and the open questions in §12
 
 ---
@@ -443,7 +444,7 @@ All MIT or CC0. **Zero CC-BY**, so an MIT `LICENSE` plus a `NOTICE` file fully d
 | 10 m wind speed | `batlowK` | Crameri 8.0.1 (MIT) | **0–55 m/s** | 0 below 2, →1 by 6 |
 | 2 m temperature | `thermal` | cmocean (MIT) | 233.15–323.15 K | opaque |
 | Reflectivity `mrr` | `ChaseSpectral` | cmweather (MIT) | **0–55 dBZ** | 0 below 0, →1 by 5 |
-| TCWV | `davos` | Crameri (MIT) | 0–70 kg/m² | opaque |
+| TCWV | `davos` | Crameri (MIT) | 0–**80** kg/m² — real ERA5 peaks at 79.58 during Chanthu; 70 would saturate the event that matters | opaque |
 | MSLP | `vik` | Crameri (MIT) | diverging, midpoint 1013.25 hPa | opaque |
 
 The wind and reflectivity ranges are **measured**, not guessed — from the package's five real sample timesteps (Probe 2), one of which is 2021-09-12, during Typhoon Chanthu:

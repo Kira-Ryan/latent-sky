@@ -45,6 +45,35 @@ const shot = async (name) => {
   console.log("  wrote " + name);
 };
 
+// ——— M5: the arrival (concept §8.1) — the dark planet, already turning ———
+await shot("arrival-orbit.png");
+
+// ——— The fly-down (§8.4): invitation -> ~4.5 s flight -> one auto-sweep ———
+const invite = page.locator("button.invite");
+if ((await invite.count()) !== 1) {
+  problems.push("invitation button not found in orbit view");
+}
+// While the idle spin runs, the anchored invitation moves with the globe and
+// Playwright refuses to click a moving target. A user's first interaction
+// stops the spin (§8.1) — reproduce exactly that: one neutral pointer tap,
+// then the (now stationary) invitation is genuinely clickable.
+await page.mouse.move(200, 200);
+await page.mouse.down();
+await page.mouse.up();
+await page.waitForTimeout(300);
+await invite.click();
+await page.waitForTimeout(2200); // mid-flight
+await shot("fly-down-mid.png");
+await page.waitForFunction(
+  () => { const v = __latentSky.getView(); return v.view === "hero" && !v.flying; },
+  null, { timeout: 20_000 },
+);
+// The arrival sweep: one pass each way (~5.3 s), then settles mid-wipe.
+await page.waitForTimeout(6500);
+const settled = await page.evaluate(() => __latentSky.getView().split);
+if (settled !== 0.5) problems.push(`post-arrival sweep did not settle mid: split=${settled}`);
+await shot("hero-arrival-sweep-settled.png");
+
 // Frame 3 = 2021-09-12 00Z, Typhoon Chanthu.
 await page.evaluate(() => __latentSky.setFrame(3));
 await page.waitForTimeout(1200);
@@ -68,4 +97,4 @@ if (problems.length) {
   for (const p of problems) console.error("  " + p);
   process.exit(1);
 }
-console.log(`\n4 screenshots in ${SHOTS} — zero errors against the real dataset.`);
+console.log(`\n7 screenshots in ${SHOTS} — zero errors against the real dataset.`);

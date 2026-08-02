@@ -11,8 +11,18 @@
   },
   "frames": [
     "2026-01-01T00:00:00Z",
-    "2026-01-01T06:00:00Z"
+    "2026-01-01T06:00:00Z",
+    "2026-01-01T12:00:00Z"
   ],
+  "basemap": {
+    "global": "basemap/global-dark.webp",
+    "globalRect": [
+      -180.0,
+      -90.0,
+      180.0,
+      90.0
+    ]
+  },
   "layers": {
     "wind10m-hero-fine": {
       "kind": "hero-fine",
@@ -35,7 +45,8 @@
       "identity": "f154e5c6be3272a573e48636de59c5322b0b321c02e12706beda5cf571e785b8",
       "frames": [
         "frames/wind10m-hero-fine-000.webp",
-        "frames/wind10m-hero-fine-001.webp"
+        "frames/wind10m-hero-fine-001.webp",
+        "frames/wind10m-hero-fine-002.webp"
       ],
       "pairWith": "wind10m-hero-coarse"
     },
@@ -60,9 +71,35 @@
       "identity": "f154e5c6be3272a573e48636de59c5322b0b321c02e12706beda5cf571e785b8",
       "frames": [
         "frames/wind10m-hero-coarse-000.webp",
-        "frames/wind10m-hero-coarse-001.webp"
+        "frames/wind10m-hero-coarse-001.webp",
+        "frames/wind10m-hero-coarse-002.webp"
       ],
       "pairWith": "wind10m-hero-fine"
+    },
+    "wind10m-global": {
+      "kind": "global",
+      "variable": "wind10m",
+      "label": "10 m wind speed \u2014 global",
+      "units": "m/s",
+      "rect": [
+        -180.0,
+        -90.0,
+        180.0,
+        90.0
+      ],
+      "size": [
+        72,
+        36
+      ],
+      "lut": "luts/wind10m.lut.png",
+      "vmin": 0.0,
+      "vmax": 55.0,
+      "identity": "f154e5c6be3272a573e48636de59c5322b0b321c02e12706beda5cf571e785b8",
+      "frames": [
+        "frames/wind10m-global-000.webp",
+        "frames/wind10m-global-001.webp",
+        "frames/wind10m-global-002.webp"
+      ]
     },
     "t2m-hero-fine": {
       "kind": "hero-fine",
@@ -85,7 +122,8 @@
       "identity": "6421c8aa4ce2bcf4e1b18eba35d309da7b41eabc4ec461f17d337581b19aeb5a",
       "frames": [
         "frames/t2m-hero-fine-000.webp",
-        "frames/t2m-hero-fine-001.webp"
+        "frames/t2m-hero-fine-001.webp",
+        "frames/t2m-hero-fine-002.webp"
       ],
       "pairWith": "t2m-hero-coarse"
     },
@@ -110,9 +148,35 @@
       "identity": "6421c8aa4ce2bcf4e1b18eba35d309da7b41eabc4ec461f17d337581b19aeb5a",
       "frames": [
         "frames/t2m-hero-coarse-000.webp",
-        "frames/t2m-hero-coarse-001.webp"
+        "frames/t2m-hero-coarse-001.webp",
+        "frames/t2m-hero-coarse-002.webp"
       ],
       "pairWith": "t2m-hero-fine"
+    },
+    "tcwv-global": {
+      "kind": "global",
+      "variable": "tcwv",
+      "label": "Total column water vapour \u2014 global",
+      "units": "kg/m\u00b2",
+      "rect": [
+        -180.0,
+        -90.0,
+        180.0,
+        90.0
+      ],
+      "size": [
+        72,
+        36
+      ],
+      "lut": "luts/tcwv.lut.png",
+      "vmin": 0.0,
+      "vmax": 70.0,
+      "identity": "093d5a52ba014778ae71d5611f535f5b561cb4543126c00f94e08801d1ff82d3",
+      "frames": [
+        "frames/tcwv-global-000.webp",
+        "frames/tcwv-global-001.webp",
+        "frames/tcwv-global-002.webp"
+      ]
     }
   }
 }

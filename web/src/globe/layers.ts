@@ -7,9 +7,17 @@
  *   preload  frame i+2, alpha 0.0 (skipped by the engine, but its texture is
  *            uploaded, so advancing a frame swaps textures without a fetch)
  *
- * The hero comparison is two stacks over the identical code path, LUT and
- * filter settings — coarse splitDirection LEFT, fine RIGHT. The wipe is a
- * per-fragment kill, never a blend (§6.3), so no colour is ever invented.
+ * A variable renders as up to three stacks, composited bottom to top:
+ *   basemap (collection index 0, owned by widget.ts)
+ *   < global       full-globe field, SplitDirection.NONE — NEVER splits
+ *   < hero-coarse  splitDirection LEFT   ┐ the wipe applies ONLY to this pair;
+ *   < hero-fine    splitDirection RIGHT  ┘ a per-fragment kill, never a blend (§6.3)
+ *
+ * All stacks travel the identical code path, LUT and filter settings — if they
+ * diverge, the reveal demonstrates a pipeline change rather than a resolution
+ * change. Every slot insertion is band-ordered: a stack's new layers are placed
+ * below the lowest live layer of any stack above it, so cross-fade rotation can
+ * never hoist a global slot above the hero pair.
  */
 import {
   ImageryLayer,
@@ -20,7 +28,7 @@ import {
 } from "cesium";
 import { BitmapImageryProvider, type BitmapRing } from "./bitmapProvider";
 import type { LayerDef, Manifest, Variable } from "../data/manifest";
-import { primaryLayerFor } from "../data/manifest";
+import { globalLayerFor, heroFineLayerFor } from "../data/manifest";
 
 export const ALPHA_EPS = 0.02; // §6.2 — crossing 0.0 or 1.0 mid-animation recompiles shaders
 
@@ -35,11 +43,17 @@ class LayerStack {
   private slots: { layer: ImageryLayer; frame: number }[] = [];
   private destroyed = false;
 
+  /**
+   * `above` returns the collection index of the lowest live layer belonging to
+   * any stack composited ABOVE this one, or undefined when this stack is
+   * topmost. New slots are inserted at that index, keeping bands ordered.
+   */
   constructor(
     private scene: Scene,
     readonly def: LayerDef,
     private ring: BitmapRing,
     private split: SplitDirection,
+    private above: () => number | undefined = () => undefined,
   ) {}
 
   private wrap(k: number): number {
@@ -60,11 +74,23 @@ class LayerStack {
       magnificationFilter: MAG_FILTER,
       // Never touch brightness / contrast / hue / saturation / gamma (§7.2c).
     });
-    this.scene.imageryLayers.add(layer);
+    const ceiling = this.above();
+    if (ceiling === undefined) this.scene.imageryLayers.add(layer);
+    else this.scene.imageryLayers.add(layer, ceiling);
     return layer;
   }
 
-  /** Filter parity probe for the coarse/fine assertion. */
+  /** Collection index of this stack's lowest live layer, or undefined if none. */
+  lowestIndex(): number | undefined {
+    let min: number | undefined;
+    for (const slot of this.slots) {
+      const i = this.scene.imageryLayers.indexOf(slot.layer);
+      if (i >= 0 && (min === undefined || i < min)) min = i;
+    }
+    return min;
+  }
+
+  /** Filter parity probe for the cross-stack assertion. */
   filters(): { min: TextureMinificationFilter; mag: TextureMagnificationFilter } {
     const layer = this.slots[0]?.layer;
     if (!layer) throw new Error(`LayerStack ${this.def.id} has no slots yet`);
@@ -127,7 +153,10 @@ class LayerStack {
 }
 
 export interface VariableLayers {
-  fine: LayerStack;
+  /** Full-globe stack, below the hero layers; never splits. Null if the variable has none. */
+  global: LayerStack | null;
+  /** Hero fine stack. Null for global-only variables (e.g. tcwv). */
+  fine: LayerStack | null;
   coarse: LayerStack | null;
   hasPair: boolean;
   setFrame(i: number, frac: number): void;
@@ -135,8 +164,8 @@ export interface VariableLayers {
 }
 
 /**
- * Build the layer stacks for one variable: the hero coarse/fine pair when the
- * manifest declares one (wipe comparison), otherwise a single stack shown whole.
+ * Build the layer stacks for one variable: its global stack (if any) AND its
+ * hero layers (if any), shown together. The wipe applies only to the hero pair.
  */
 export function buildVariableLayers(
   scene: Scene,
@@ -144,62 +173,103 @@ export function buildVariableLayers(
   variable: Variable,
   ring: BitmapRing,
 ): VariableLayers {
-  const fineDef = primaryLayerFor(manifest, variable);
-  if (!fineDef) throw new Error(`manifest has no renderable layer for variable ${variable}`);
+  const globalDef = globalLayerFor(manifest, variable) ?? null;
+  const fineDef = heroFineLayerFor(manifest, variable) ?? null;
+  if (!globalDef && !fineDef) throw new Error(`manifest has no renderable layer for variable ${variable}`);
 
   let coarseDef: LayerDef | null = null;
-  if (fineDef.pairWith !== undefined) {
+  if (fineDef?.pairWith !== undefined) {
     const candidate = manifest.layers.get(fineDef.pairWith);
     if (!candidate) throw new Error(`layer ${fineDef.id} pairWith ${fineDef.pairWith} does not exist`);
     if (candidate.kind === "hero-coarse") coarseDef = candidate;
   }
 
-  // §7.2(b), re-asserted at load: the manifest identity strings for the pair
-  // MUST be equal, or the reveal demonstrates a colour change, not a resolution
-  // change. Refuse to render a false comparison.
-  if (coarseDef && coarseDef.identity !== fineDef.identity) {
+  // §7.2(b), re-asserted at load: every layer of this variable MUST share one
+  // identity string, or the piece demonstrates a colour change, not a
+  // resolution change. Refuse to render a false comparison.
+  if (coarseDef && fineDef && coarseDef.identity !== fineDef.identity) {
     throw new Error(
       `colour identity mismatch for ${variable}: coarse ${coarseDef.identity} != fine ${fineDef.identity} — ` +
         `the coarse and fine layers were not encoded through the same (LUT, vmin, vmax, alpha) tuple`,
     );
   }
+  const heroDef = fineDef ?? coarseDef;
+  if (globalDef && heroDef && globalDef.identity !== heroDef.identity) {
+    throw new Error(
+      `colour identity mismatch for ${variable}: global ${globalDef.identity} != hero ${heroDef.identity} — ` +
+        `the global and hero layers were not encoded through the same (LUT, vmin, vmax, alpha) tuple`,
+    );
+  }
 
-  const fine = new LayerStack(scene, fineDef, ring, coarseDef ? SplitDirection.RIGHT : SplitDirection.NONE);
-  const coarse = coarseDef ? new LayerStack(scene, coarseDef, ring, SplitDirection.LEFT) : null;
+  // Compositing order, bottom to top: global < coarse < fine. Each stack
+  // inserts its slots below the lowest live layer of the stacks above it.
+  // Declared before construction because the `above` closures reference the
+  // stacks built after them; the closures only run at slot-insertion time.
+  let global: LayerStack | null = null;
+  let coarse: LayerStack | null = null;
+  let fine: LayerStack | null = null;
+  const lowestOf = (...stacks: (LayerStack | null)[]): number | undefined => {
+    let min: number | undefined;
+    for (const stack of stacks) {
+      const i = stack?.lowestIndex();
+      if (i !== undefined && (min === undefined || i < min)) min = i;
+    }
+    return min;
+  };
+  if (globalDef) {
+    // The global layer never splits — it renders whole on both sides of the wipe.
+    global = new LayerStack(scene, globalDef, ring, SplitDirection.NONE, () => lowestOf(coarse, fine));
+  }
+  if (coarseDef) {
+    coarse = new LayerStack(scene, coarseDef, ring, SplitDirection.LEFT, () => lowestOf(fine));
+  }
+  if (fineDef) {
+    fine = new LayerStack(scene, fineDef, ring, coarseDef ? SplitDirection.RIGHT : SplitDirection.NONE);
+  }
 
-  // Warm the decode ring for every frame of the pair — decode off the frame path.
-  ring.prefetch(fineDef.frameUrls);
-  if (coarseDef) ring.prefetch(coarseDef.frameUrls);
+  // Warm the decode ring for every frame of every stack — decode off the frame path.
+  for (const def of [globalDef, coarseDef, fineDef]) {
+    if (def) ring.prefetch(def.frameUrls);
+  }
 
-  // §6.1 — identical minification/magnification filters on the hero pair. If
-  // they travel through different filter settings, the reveal demonstrates a
-  // pipeline change rather than a resolution change. Asserted once, on the
-  // first frame both stacks have live layers.
+  // §6.1 — identical minification/magnification filters on every stack of the
+  // variable. If they travel through different filter settings, the comparison
+  // demonstrates a pipeline change rather than a resolution change. Asserted
+  // once, on the first frame all stacks have live layers.
+  const stacks = [global, coarse, fine].filter((s): s is LayerStack => s !== null);
   let parityAsserted = false;
   const assertFilterParity = (): void => {
-    if (!coarse || parityAsserted) return;
-    const a = fine.filters();
-    const b = coarse.filters();
-    if (a.min !== b.min || a.mag !== b.mag) {
-      throw new Error(
-        `filter parity violated on hero pair: fine(min=${a.min}, mag=${a.mag}) != coarse(min=${b.min}, mag=${b.mag})`,
-      );
+    if (stacks.length < 2 || parityAsserted) return;
+    const [first, ...rest] = stacks;
+    const a = first.filters();
+    for (const other of rest) {
+      const b = other.filters();
+      if (a.min !== b.min || a.mag !== b.mag) {
+        throw new Error(
+          `filter parity violated for ${variable}: ${first.def.id}(min=${a.min}, mag=${a.mag}) != ` +
+            `${other.def.id}(min=${b.min}, mag=${b.mag})`,
+        );
+      }
     }
     parityAsserted = true;
   };
 
   return {
+    global,
     fine,
     coarse,
-    hasPair: coarse !== null,
+    hasPair: coarse !== null && fine !== null,
     setFrame(i: number, frac: number): void {
-      fine.setFrame(i, frac);
+      // Bottom-up, so first-ever slot creation lands in band order too.
+      global?.setFrame(i, frac);
       coarse?.setFrame(i, frac);
+      fine?.setFrame(i, frac);
       assertFilterParity();
     },
     destroy(): void {
-      fine.destroy();
+      global?.destroy();
       coarse?.destroy();
+      fine?.destroy();
     },
   };
 }

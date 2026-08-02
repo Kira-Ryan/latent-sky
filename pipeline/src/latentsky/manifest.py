@@ -38,15 +38,36 @@ def load_schema(schema_path: pathlib.Path = SCHEMA_PATH) -> dict:
         return json.load(fh)
 
 
+_BASEMAP_KEYS = {"global", "globalRect", "hero", "heroRect"}
+
+
 def build_manifest(
     run: dict,
     frame_times: list[str],
     layers: list[LayerRecord],
     specs: dict[str, RampSpec],
+    basemap: dict | None = None,
 ) -> dict:
-    """Assemble the manifest dict and run every pre-schema gate. Raises on any failure."""
+    """Assemble the manifest dict and run every pre-schema gate. Raises on any failure.
+
+    `basemap` is the optional schema "basemap" object ({global, globalRect, hero,
+    heroRect}); its imagery must be public-domain or CC-BY (schema note) and its
+    referenced files are existence-checked by write_manifest like every layer asset.
+    """
     if not layers:
         raise ManifestError("no layers — refusing to emit an empty manifest")
+
+    if basemap is not None:
+        unknown = set(basemap) - _BASEMAP_KEYS
+        if unknown:
+            raise ManifestError(f"basemap carries unknown keys {sorted(unknown)}")
+        if not ("global" in basemap or "hero" in basemap):
+            raise ManifestError("basemap object declares no imagery at all")
+        for key in ("globalRect", "heroRect"):
+            if key in basemap:
+                rect = basemap[key]
+                if len(rect) != 4 or not all(isinstance(v, (int, float)) for v in rect):
+                    raise ManifestError(f"basemap.{key} must be [west, south, east, north], got {rect!r}")
 
     # Gates 1 and 2 — §7.2(b). These raise RampIdentityError / GlobalRangeError.
     verify_identity(layers)
@@ -73,8 +94,13 @@ def build_manifest(
         "schemaVersion": 1,
         "run": run,
         "frames": list(frame_times),
-        "layers": {},
     }
+    if basemap is not None:
+        manifest["basemap"] = {
+            k: (list(map(float, v)) if k.endswith("Rect") else str(v))
+            for k, v in basemap.items()
+        }
+    manifest["layers"] = {}
     for layer in layers:
         entry: dict = {
             "kind": layer.kind,
@@ -104,6 +130,10 @@ def write_manifest(
     out_dir = pathlib.Path(out_dir)
 
     missing: list[str] = []
+    for key in ("global", "hero"):
+        rel = manifest.get("basemap", {}).get(key)
+        if rel is not None and not (out_dir / rel).is_file():
+            missing.append(f"basemap.{key}: {rel}")
     for layer_id, layer in manifest["layers"].items():
         for rel in [layer["lut"], *layer["frames"]]:
             if not (out_dir / rel).is_file():

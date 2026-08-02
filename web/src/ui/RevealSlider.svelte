@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
   import { sky } from "../state/store.svelte";
+  import { motionOk } from "../motion";
 
   let wrapEl = $state<HTMLDivElement | null>(null);
   let sweeping = $state(false);
@@ -21,6 +22,12 @@
   const rightPillVisible = $derived(sky.split < 0.86);
 
   function startSweep(): void {
+    if (!motionOk()) {
+      // prefers-reduced-motion: the sweep is a jump cut to the resting state —
+      // a static mid-wipe, which IS the comparison (§6.3).
+      sky.split = 0.5;
+      return;
+    }
     sweeping = true;
     const period = 7000; // ms for a full there-and-back
     const t0 = performance.now();
@@ -49,6 +56,16 @@
 
   onDestroy(stopSweep);
 
+  // Arrival at the hero (§8.4): run ONE auto-sweep, then settle mid. The flag
+  // is set by App when the fly-down completes; under prefers-reduced-motion
+  // startSweep is already a jump cut to the static mid-wipe.
+  $effect(() => {
+    if (sky.sweepPending && sky.hasPair && sky.showFine && sky.revealEngaged) {
+      sky.sweepPending = false;
+      startSweep();
+    }
+  });
+
   function dragTo(clientX: number): void {
     if (!wrapEl) return;
     const rect = wrapEl.getBoundingClientRect();
@@ -68,7 +85,7 @@
   }
 </script>
 
-{#if sky.hasPair && sky.showFine}
+{#if sky.hasPair && sky.showFine && sky.revealEngaged}
   <div class="reveal-overlay" bind:this={wrapEl}>
     <span
       class="pill coarse"
@@ -84,7 +101,7 @@
     <div class="divider" style:left={`calc(${sky.split * 100}% - 1px)`} aria-hidden="true"></div>
     <button
       class="grip"
-      style:left={`${sky.split * 100}%`}
+      style:left={`clamp(19px, ${sky.split * 100}%, calc(100% - 19px))`}
       onpointerdown={onGripPointerDown}
       onpointermove={onGripPointerMove}
       tabindex="-1"

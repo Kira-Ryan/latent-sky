@@ -39,11 +39,27 @@ export interface LayerDef {
   pairWith?: string;
 }
 
+/**
+ * Optional offline-baked basemap imagery (schema `basemap`). URLs are resolved
+ * against the manifest URL, exactly like layer frames. Arrives pre-styled —
+ * §7.2(c): the app never touches brightness/contrast/hue/saturation/gamma.
+ */
+export interface BasemapDef {
+  /** Absolute URL of the full-globe equirectangular basemap, if declared. */
+  globalUrl?: string;
+  /** [west, south, east, north] degrees; defaults to the full globe. */
+  globalRect: [number, number, number, number];
+  /** Absolute URL of the crisp regional basemap over the hero rectangle, if declared. */
+  heroUrl?: string;
+  heroRect?: [number, number, number, number];
+}
+
 export interface Manifest {
   schemaVersion: 1;
   run: RunInfo;
   /** Valid times as ISO strings, strictly increasing */
   frameIso: string[];
+  basemap?: BasemapDef;
   layers: Map<string, LayerDef>;
 }
 
@@ -74,6 +90,13 @@ function requireIso(v: unknown, path: string): string {
   const s = requireString(v, path);
   if (Number.isNaN(Date.parse(s))) fail(path, `not a parseable date-time: ${s}`);
   return s;
+}
+
+function requireRect(v: unknown, path: string): [number, number, number, number] {
+  if (!Array.isArray(v) || v.length !== 4) fail(path, "expected [west, south, east, north]");
+  const rect = v.map((n, i) => requireNumber(n, `${path}[${i}]`)) as [number, number, number, number];
+  if (!(rect[0] < rect[2] && rect[1] < rect[3])) fail(path, `degenerate rectangle ${JSON.stringify(rect)}`);
+  return rect;
 }
 
 export async function loadManifest(url: string): Promise<Manifest> {
@@ -113,6 +136,24 @@ export function parseManifest(raw: unknown, baseUrl: URL): Manifest {
     }
   }
 
+  let basemap: BasemapDef | undefined;
+  if (root.basemap !== undefined) {
+    const b = requireRecord(root.basemap, "$.basemap");
+    basemap = {
+      globalUrl:
+        b.global === undefined
+          ? undefined
+          : new URL(requireString(b.global, "$.basemap.global"), baseUrl).toString(),
+      globalRect:
+        b.globalRect === undefined ? [-180, -90, 180, 90] : requireRect(b.globalRect, "$.basemap.globalRect"),
+      heroUrl:
+        b.hero === undefined
+          ? undefined
+          : new URL(requireString(b.hero, "$.basemap.hero"), baseUrl).toString(),
+      heroRect: b.heroRect === undefined ? undefined : requireRect(b.heroRect, "$.basemap.heroRect"),
+    };
+  }
+
   const layersRaw = requireRecord(root.layers, "$.layers");
   const ids = Object.keys(layersRaw);
   if (ids.length < 1) fail("$.layers", "expected at least one layer");
@@ -127,9 +168,7 @@ export function parseManifest(raw: unknown, baseUrl: URL): Manifest {
     const variable = requireString(l.variable, `${p}.variable`) as Variable;
     if (!VARIABLES.includes(variable)) fail(`${p}.variable`, `unknown variable ${variable}`);
 
-    if (!Array.isArray(l.rect) || l.rect.length !== 4) fail(`${p}.rect`, "expected [west, south, east, north]");
-    const rect = l.rect.map((v, i) => requireNumber(v, `${p}.rect[${i}]`)) as [number, number, number, number];
-    if (!(rect[0] < rect[2] && rect[1] < rect[3])) fail(`${p}.rect`, `degenerate rectangle ${JSON.stringify(rect)}`);
+    const rect = requireRect(l.rect, `${p}.rect`);
 
     if (!Array.isArray(l.size) || l.size.length !== 2) fail(`${p}.size`, "expected [width, height]");
     const size = l.size.map((v, i) => {
@@ -175,18 +214,28 @@ export function parseManifest(raw: unknown, baseUrl: URL): Manifest {
     }
   }
 
-  return { schemaVersion: 1, run, frameIso, layers };
+  return { schemaVersion: 1, run, frameIso, basemap, layers };
+}
+
+/** The hero-fine layer for a variable, or undefined. */
+export function heroFineLayerFor(manifest: Manifest, variable: Variable): LayerDef | undefined {
+  for (const layer of manifest.layers.values()) {
+    if (layer.variable === variable && layer.kind === "hero-fine") return layer;
+  }
+  return undefined;
+}
+
+/** The kind-"global" layer for a variable, or undefined. */
+export function globalLayerFor(manifest: Manifest, variable: Variable): LayerDef | undefined {
+  for (const layer of manifest.layers.values()) {
+    if (layer.variable === variable && layer.kind === "global") return layer;
+  }
+  return undefined;
 }
 
 /** The hero-fine (falling back to global) layer for a variable, or undefined. */
 export function primaryLayerFor(manifest: Manifest, variable: Variable): LayerDef | undefined {
-  let global: LayerDef | undefined;
-  for (const layer of manifest.layers.values()) {
-    if (layer.variable !== variable) continue;
-    if (layer.kind === "hero-fine") return layer;
-    if (layer.kind === "global") global ??= layer;
-  }
-  return global;
+  return heroFineLayerFor(manifest, variable) ?? globalLayerFor(manifest, variable);
 }
 
 /** Variables this manifest can actually render, in schema enum order. */

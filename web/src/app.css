@@ -1,13 +1,19 @@
-/* Latent Sky — designed-quiet. Dark, restrained; the field is the visual. */
+/* Latent Sky — designed-quiet. Dark, restrained; the field is the visual.
+   Palette: DOCS/concept-visual.html :root — cyan is the instrument accent,
+   amber is reserved for the generative/hero accents, everything else is ink
+   on deep blue-black. */
 
 :root {
-  --bg: #0b0e14;
-  --panel: rgba(13, 17, 26, 0.82);
-  --panel-border: rgba(148, 163, 184, 0.14);
-  --text: #cbd5e1;
-  --text-dim: #8b98ab;
-  --accent: #7fb4d9;
-  --focus: #9ecbeb;
+  --bg: #070c1a;
+  --panel: rgba(16, 26, 56, 0.78);
+  --panel-solid: #0c1430;
+  --panel-border: rgba(44, 61, 99, 0.85);
+  --text: #e8eefc;
+  --text-dim: #a9b8d8;
+  --text-faint: #6d7fa5;
+  --accent: #4fd1c5;
+  --amber: #fbbf24;
+  --focus: #7fe0d6;
   color-scheme: dark;
 }
 
@@ -41,12 +47,77 @@ body {
   outline-offset: 2px;
 }
 
+/* prefers-reduced-motion: every CSS transition/animation becomes a jump cut.
+   JavaScript-driven animation (auto-sweep, future camera flights) is gated
+   separately through motionOk() in src/motion.ts. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
 button {
   font: inherit;
   color: inherit;
   background: none;
   border: none;
   cursor: pointer;
+}
+
+/* Refined sliders — one instrument-grade treatment for the timeline and the
+   reveal range: a hairline track, a small precise thumb, cyan accent. */
+input[type="range"] {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 22px;
+  margin: 0;
+  background: transparent;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(109, 127, 165, 0.45);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: none;
+  box-shadow: 0 0 0 3px rgba(79, 209, 197, 0.15);
+}
+
+input[type="range"]::-moz-range-track {
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(109, 127, 165, 0.45);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: none;
+  box-shadow: 0 0 0 3px rgba(79, 209, 197, 0.15);
+}
+
+input[type="range"]:disabled::-webkit-slider-thumb {
+  background: var(--text-faint);
+  box-shadow: none;
+}
+
+input[type="range"]:disabled::-moz-range-thumb {
+  background: var(--text-faint);
+  box-shadow: none;
 }
 
 .boot-error {

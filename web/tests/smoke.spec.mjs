@@ -6,9 +6,11 @@
  * fixture (web/dev-fixture/), then asserts:
  *   1. the canvas is not a uniform colour (the globe and field rendered)
  *   2. scrubbing one frame forward changes pixels
- *   3. zero console errors / failed console.asserts / page errors
- *   4. zero responses >= 400
- *   5. zero requests to api.cesium.com or ANY non-localhost host
+ *   3. tcwv (a global-only layer) is selectable and renders differently
+ *   4. the manifest basemap is used — zero NaturalEarthII fallback requests
+ *   5. zero console errors / failed console.asserts / page errors
+ *   6. zero responses >= 400
+ *   7. zero requests to api.cesium.com or ANY non-localhost host
  *
  * Exits non-zero on any failure.
  *
@@ -51,6 +53,7 @@ const consoleErrors = [];
 const pageErrors = [];
 const badResponses = [];
 const externalRequests = [];
+const allRequests = [];
 page.on("console", (m) => {
   if (m.type() === "error" || m.type() === "assert") consoleErrors.push(m.text());
 });
@@ -59,6 +62,7 @@ page.on("response", (r) => {
   if (r.status() >= 400) badResponses.push(`${r.status()} ${r.url()}`);
 });
 page.on("request", (r) => {
+  allRequests.push(r.url());
   const host = new URL(r.url()).hostname;
   if (!["localhost", "127.0.0.1", "[::1]"].includes(host)) externalRequests.push(r.url());
 });
@@ -105,6 +109,32 @@ try {
   const frame1 = await sample();
   const changed = frame0.filter((p, i) => p.join(",") !== frame1[i].join(",")).length;
   check(changed > 5, "scrubbing one frame forward changes pixels", `${changed}/${frame0.length} sample points changed`);
+
+  // Global-only variable: tcwv has no hero layers, so its being selectable and
+  // rendering proves the kind:"global" path end to end.
+  const variables = await page.evaluate(() => globalThis.__latentSky.variables);
+  check(
+    Array.isArray(variables) && variables.includes("tcwv"),
+    "tcwv (global-only) is offered as a selectable variable",
+    `variables = ${JSON.stringify(variables)}`,
+  );
+  await page.evaluate(() => globalThis.__latentSky.setVariable("tcwv"));
+  // The new stacks decode off the frame path; poll briefly rather than racing them.
+  let tcwvChanged = 0;
+  for (let attempt = 0; attempt < 15; attempt++) {
+    const frameT = await sample();
+    tcwvChanged = frame1.filter((p, i) => p.join(",") !== frameT[i].join(",")).length;
+    if (tcwvChanged > 5) break;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  check(tcwvChanged > 5, "switching to tcwv renders the global layer", `${tcwvChanged}/${frame1.length} sample points changed`);
+
+  const naturalEarth = allRequests.filter((u) => u.includes("NaturalEarthII"));
+  check(
+    naturalEarth.length === 0,
+    "manifest basemap in use — zero NaturalEarthII fallback requests",
+    naturalEarth.slice(0, 3).join(", "),
+  );
 
   const cesiumIon = externalRequests.filter((u) => u.includes("api.cesium.com"));
   check(cesiumIon.length === 0, "zero requests to api.cesium.com", cesiumIon.join(", "));
