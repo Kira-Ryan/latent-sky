@@ -32,7 +32,24 @@ ENV FORCE_CUDA_EXTENSION=1 \
     HF_HOME=/cache/hf
 
 WORKDIR /opt/latentsky
+
+# earth2studio's [tool.uv] settings (no-build-isolation for torch-harmonics, git
+# sources for makani) apply only when it is the PROJECT — uv ignores a dependency's
+# tool.uv tables. Verified by failure: without replicating them here, resolution
+# builds torch-harmonics' metadata in an isolated env with no torch and dies with
+# `NameError: CppExtension`. So: replicate the pins, then install torch FIRST so
+# the non-isolated builds can import it.
 RUN uv init --python 3.13 --no-workspace . \
+    && printf '%s\n' \
+       '' \
+       '[tool.uv]' \
+       'no-build-isolation-package = ["torch-harmonics", "makani"]' \
+       '' \
+       '[tool.uv.sources]' \
+       'torch-harmonics = { git = "https://github.com/NVIDIA/torch-harmonics.git", rev = "a632ca748a12bd9f74dbc1e00653317810991f74" }' \
+       'makani = { git = "https://github.com/NVIDIA/makani.git", rev = "b38fcb2799d7dbc146fa60459f3f9823394a8bf1" }' \
+       >> pyproject.toml \
+    && uv add torch setuptools wheel ninja \
     && uv add "earth2studio[sfno,corrdiff] @ git+https://github.com/NVIDIA/earth2studio.git@0.17.0" \
     && uv add zarr numcodecs pyyaml
 
