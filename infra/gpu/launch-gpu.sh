@@ -15,6 +15,8 @@
 #   physically unlaunchable)
 
 set -euo pipefail
+source "$(dirname "$0")/account_guard.sh"
+
 cd "$(dirname "$0")"
 
 REGION=${REGION:-us-east-1}

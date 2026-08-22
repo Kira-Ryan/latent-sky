@@ -8,6 +8,8 @@
 # volume is deleted with it. Uses `sleep 120` in place of the 4-hour deadline.
 
 set -euo pipefail
+source "$(dirname "$0")/account_guard.sh"
+
 
 REGION=${REGION:-us-east-1}
 KEY_NAME=${KEY_NAME:?set KEY_NAME=<ec2 keypair name>}

@@ -1,5 +1,31 @@
 # GPU day runbook
 
+## ⚠ Account boundary — read before anything else (16 Aug 2026)
+
+The AWS credentials configured as the DEFAULT profile on the dev machine belong to
+**account 093047596153 — Kira's company. Nothing from Latent Sky may touch it.**
+Every script here sources `account_guard.sh`, which hard-refuses that account and
+requires `LATENTSKY_AWS_ACCOUNT=<personal account id>` to be set explicitly.
+
+### Setting up the new personal account (one-time, before any GPU work)
+
+1. **Sign up on the PAID account plan, not Free.** This is decided at signup and is
+   load-bearing: CloudFront flat-rate plans (the whole §9.3 bill-cap design) are
+   unavailable to Free-plan accounts, and Free-plan accounts self-close after 6 months.
+   You are trading signup credits for a permanent spend cap. Take the trade.
+2. **File the GPU quota request immediately** — Service Quotas → EC2 →
+   "Running On-Demand G and VT instances" (`L-DB2E81BA`) → 8 vCPUs, us-east-1.
+   A new account's default is **0** and approval is human-reviewed (days). This is
+   the clock that starts everything else; file it the same hour the account exists.
+   Leave the P-instance quota at 0 — that keeps the $55/hr tier unlaunchable.
+3. Root MFA on; a $50 budget with 50/80/100% alerts plus an action-enabled budget
+   that stops EC2 (first two action budgets are free).
+4. Configure the CLI as a **named profile, never default**:
+   `aws configure --profile latentsky`, then for every session here:
+   `export AWS_PROFILE=latentsky LATENTSKY_AWS_ACCOUNT=<new account id>`.
+5. Verify the guard passes: `bash infra/gpu/account_guard.sh` prints
+   `account guard OK: <id> (personal)`.
+
 The rented-GPU session is the only unrecoverable spend in the project, so the day is
 scripted to be boring. Total inference is trivial (the shipped CorrDiff example runs in
 ~21 s); the entire risk is environment friction and forgetting to turn things off —

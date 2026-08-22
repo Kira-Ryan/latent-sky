@@ -7,6 +7,8 @@
 #   BUCKET=<bucket> ./prefetch-models.sh
 
 set -euo pipefail
+source "$(dirname "$0")/account_guard.sh"
+
 BUCKET=${BUCKET:?set BUCKET=<your-s3-bucket>}
 REGION=${REGION:-us-east-1}
 CACHE=${EARTH2STUDIO_CACHE:-$HOME/.cache/earth2studio}
