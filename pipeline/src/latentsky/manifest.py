@@ -40,6 +40,42 @@ def load_schema(schema_path: pathlib.Path = SCHEMA_PATH) -> dict:
 
 _BASEMAP_KEYS = {"global", "globalRect", "hero", "heroRect"}
 
+# Config key (snake_case, as in configs/event_*.yaml) -> schema run field (camelCase).
+_HINT_KEYS = {
+    "storm_name": "stormName",
+    "hero_frame": "heroFrame",
+    "place_label": "placeLabel",
+}
+
+
+def run_hints(cfg: dict) -> dict:
+    """Extract the OPTIONAL first-class run hints from a config dict.
+
+    Config-driven by design: event configs (configs/event_*.yaml) and the dev
+    encode both route their {storm_name, hero_frame, place_label} through here,
+    so the UI never regex-parses a storm name out of generatedNote or guesses
+    the hero frame. Missing keys are simply absent from the result — the web
+    app falls back to its heuristics. Wrong types raise, loudly: a silently
+    dropped hint would present as the heuristic, which is exactly the failure
+    class this field exists to remove. hero_frame bounds against the frame
+    count are gated later, in build_manifest, where the frames are known.
+    """
+    hints: dict = {}
+    for key, field in _HINT_KEYS.items():
+        if key not in cfg or cfg[key] is None:
+            continue
+        value = cfg[key]
+        if key == "hero_frame":
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ManifestError(
+                    f"config {key}: expected a non-negative integer frame index, got {value!r}"
+                )
+        else:
+            if not isinstance(value, str) or not value.strip():
+                raise ManifestError(f"config {key}: expected a non-empty string, got {value!r}")
+        hints[field] = value
+    return hints
+
 
 def build_manifest(
     run: dict,
@@ -76,6 +112,15 @@ def build_manifest(
     # Gate 3 — frame bookkeeping.
     if any(a >= b for a, b in zip(frame_times, frame_times[1:])):
         raise ManifestError(f"frame times must be strictly increasing, got {frame_times}")
+    hero_frame = run.get("heroFrame")
+    if hero_frame is not None:
+        if isinstance(hero_frame, bool) or not isinstance(hero_frame, int):
+            raise ManifestError(f"run.heroFrame must be an integer frame index, got {hero_frame!r}")
+        if not 0 <= hero_frame < len(frame_times):
+            raise ManifestError(
+                f"run.heroFrame {hero_frame} is out of range for {len(frame_times)} frames — "
+                "the schema cannot cross-reference frames, so this gate lives here"
+            )
     for layer in layers:
         if len(layer.frames) != len(frame_times):
             raise ManifestError(

@@ -1,0 +1,53 @@
+# Web verification — Architecture.md §10.
+# svelte-check, vite build, the §8.1 TRANSFER-byte payload gate, Playwright smoke.
+# No deploy step yet: hosting is S3+CloudFront (§9) and lands with M1's infra work.
+name: web
+
+on:
+  push:
+    paths:
+      - "web/**"
+      - "data/web/**"
+      - "schema/**"
+      - ".github/workflows/web.yml"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: check · build · payload gate · smoke
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: svelte-check
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+      # §8.1 — the gate measures transfer bytes, not disk bytes: brotli q11 of the
+      # app chunks plus the shipped data tiers (data/web, once the GPU run ships).
+      - name: Payload gate — transfer bytes vs the 12 MB ceiling
+        run: node tools/transfer-budget.mjs --ceiling-mb 12
+
+      # Locally the smoke test drives real Chrome (channel "chrome"). Runners get
+      # Playwright's bundled Chromium instead; the test honours CHANNEL for this.
+      - name: Install Playwright Chromium
+        run: npx playwright-core install --with-deps chromium
+
+      - name: Smoke test
+        env:
+          CHANNEL: chromium
+        run: node tests/smoke.spec.mjs

@@ -15,6 +15,12 @@
  * Exits non-zero on any failure.
  *
  *   node tests/smoke.spec.mjs
+ *
+ * Browser channel: real Chrome locally, overridable for CI where only
+ * Playwright's bundled Chromium exists (installed via `npx playwright-core
+ * install chromium`):
+ *
+ *   CHANNEL=chromium node tests/smoke.spec.mjs
  */
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -43,8 +49,10 @@ const server = await createServer({
 });
 await server.listen();
 
+const CHANNEL = process.env.CHANNEL || "chrome"; // "chromium" in CI (web.yml)
+console.log(`browser channel: ${CHANNEL}`);
 const browser = await chromium.launch({
-  channel: "chrome",
+  channel: CHANNEL,
   args: ["--enable-unsafe-swiftshader"], // deterministic software GL if no hw context
 });
 const page = await browser.newPage({ viewport: { width: 1100, height: 750 } });

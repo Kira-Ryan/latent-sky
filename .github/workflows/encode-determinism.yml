@@ -1,0 +1,63 @@
+# Encode determinism — Architecture.md §11.
+# pytest always. Then, once the one-shot GPU run has shipped its Zarr as a GitHub
+# Release asset, re-encode from it and diff against the committed data/web — making
+# the encoder's determinism a gate rather than a hope (LUT drift, range drift,
+# encoder-version drift). Until that Release exists the re-encode is skipped with a
+# clear message, so this job is green today by design.
+name: encode-determinism
+
+on:
+  push:
+    paths:
+      - "pipeline/**"
+      - "data/web/**"
+      - ".github/workflows/encode-determinism.yml"
+  workflow_dispatch:
+
+jobs:
+  encode:
+    name: pytest · re-encode from released Zarr · diff data/web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/pyproject.toml
+
+      - name: Install pipeline
+        run: python -m pip install -e "pipeline[dev]"
+
+      - name: pytest
+        working-directory: pipeline
+        run: python -m pytest -q
+
+      - name: Download released Zarr, if the GPU run has shipped
+        id: zarr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p data/zarr
+          if gh release download --pattern "*.zarr*" --dir data/zarr 2>/dev/null \
+             && ls data/zarr/* >/dev/null 2>&1; then
+            for f in data/zarr/*.tar data/zarr/*.tar.gz data/zarr/*.tgz data/zarr/*.tar.zst; do
+              if [ -e "$f" ]; then tar -xaf "$f" -C data/zarr && rm "$f"; fi
+            done
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "Release Zarr downloaded:" && ls -la data/zarr
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "SKIP: no GitHub Release carries a Zarr asset yet — the one-shot GPU run"
+            echo "has not shipped. The re-encode determinism check will activate on the"
+            echo "first Release that attaches the *.zarr archive (Architecture.md §11)."
+          fi
+
+      - name: Re-encode from the released Zarr
+        if: steps.zarr.outputs.present == 'true'
+        run: make encode
+
+      - name: Determinism gate — committed data/web must be byte-identical
+        if: steps.zarr.outputs.present == 'true'
+        run: git diff --exit-code data/web

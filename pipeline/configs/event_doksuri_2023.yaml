@@ -10,3 +10,10 @@ ensemble_samples: 4
 seed: 20230726
 coarse_variables: [u10m, v10m, t2m, tcwv, msl]
 output: /out/doksuri_2023.zarr
+
+# First-class manifest run hints (schema run.stormName/heroFrame/placeLabel).
+storm_name: "Typhoon Doksuri"
+place_label: "Taiwan · CWA model domain"
+# 3 = 2023-07-27T06Z, near closest approach to Taiwan through the Luzon
+# Strait — TUNE after the run: pick the most developed frame from real fields.
+hero_frame: 3

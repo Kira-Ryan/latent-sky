@@ -17,6 +17,14 @@ export interface RunInfo {
   init?: string;
   model: { prognostic: string; downscaling: string };
   generatedNote: string;
+  /** First-class storm name, e.g. "Typhoon Gaemi". Absent when no storm claim
+   * should be made — use stormNameFor() for the heuristic fallback. */
+  stormName?: string;
+  /** Index into frameIso of the most developed frame — where "enter the storm"
+   * should arrive. Use heroFrameFor() for the last-frame fallback. */
+  heroFrame?: number;
+  /** Human label for the hero domain, e.g. "Taiwan · CWA model domain". */
+  placeLabel?: string;
 }
 
 export interface LayerDef {
@@ -86,6 +94,12 @@ function requireRecord(v: unknown, path: string): Record<string, unknown> {
   return v as Record<string, unknown>;
 }
 
+function requireIndex(v: unknown, path: string): number {
+  const n = requireNumber(v, path);
+  if (!Number.isInteger(n) || n < 0) fail(path, `expected non-negative integer index, got ${n}`);
+  return n;
+}
+
 function requireIso(v: unknown, path: string): string {
   const s = requireString(v, path);
   if (Number.isNaN(Date.parse(s))) fail(path, `not a parseable date-time: ${s}`);
@@ -126,6 +140,9 @@ export function parseManifest(raw: unknown, baseUrl: URL): Manifest {
       downscaling: requireString(modelRaw.downscaling, "$.run.model.downscaling"),
     },
     generatedNote: requireString(runRaw.generatedNote, "$.run.generatedNote"),
+    stormName: runRaw.stormName === undefined ? undefined : requireString(runRaw.stormName, "$.run.stormName"),
+    heroFrame: runRaw.heroFrame === undefined ? undefined : requireIndex(runRaw.heroFrame, "$.run.heroFrame"),
+    placeLabel: runRaw.placeLabel === undefined ? undefined : requireString(runRaw.placeLabel, "$.run.placeLabel"),
   };
 
   if (!Array.isArray(root.frames) || root.frames.length < 1) fail("$.frames", "expected non-empty array");
@@ -134,6 +151,10 @@ export function parseManifest(raw: unknown, baseUrl: URL): Manifest {
     if (Date.parse(frameIso[i]) <= Date.parse(frameIso[i - 1])) {
       fail(`$.frames[${i}]`, `not strictly increasing: ${frameIso[i - 1]} -> ${frameIso[i]}`);
     }
+  }
+  // heroFrame indexes into frames — checkable only once both are parsed.
+  if (run.heroFrame !== undefined && run.heroFrame >= frameIso.length) {
+    fail("$.run.heroFrame", `index ${run.heroFrame} out of range for ${frameIso.length} frames`);
   }
 
   let basemap: BasemapDef | undefined;
@@ -215,6 +236,39 @@ export function parseManifest(raw: unknown, baseUrl: URL): Manifest {
   }
 
   return { schemaVersion: 1, run, frameIso, basemap, layers };
+}
+
+/**
+ * The storm's display name. Prefers the first-class run.stormName; falls back
+ * to the legacy heuristic (parsing "Typhoon X" out of generatedNote), then to
+ * the honest non-claim "the hero region". UI adoption point for the invitation.
+ */
+export function stormNameFor(manifest: Manifest): string {
+  return (
+    manifest.run.stormName ??
+    /Typhoon\s+[A-Z][a-z]+/.exec(manifest.run.generatedNote)?.[0] ??
+    "the hero region"
+  );
+}
+
+/**
+ * The frame index "enter the storm" should arrive on. Prefers the first-class
+ * run.heroFrame (already range-checked at parse); falls back to the legacy
+ * heuristic — the last frame, on the grounds that frames are chronological and
+ * quiet early frames must never sit under the invitation copy.
+ */
+export function heroFrameFor(manifest: Manifest): number {
+  return manifest.run.heroFrame ?? manifest.frameIso.length - 1;
+}
+
+/**
+ * Human label for the hero domain, e.g. "Taiwan · CWA model domain", or
+ * undefined when the manifest makes no claim — there is no heuristic to fall
+ * back to, and inventing a place would be exactly the failure the first-class
+ * field exists to prevent.
+ */
+export function placeLabelFor(manifest: Manifest): string | undefined {
+  return manifest.run.placeLabel;
 }
 
 /** The hero-fine layer for a variable, or undefined. */

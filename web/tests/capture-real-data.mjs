@@ -16,6 +16,9 @@ import { chromium } from "playwright-core";
 const WEB = dirname(dirname(fileURLToPath(import.meta.url)));
 const SHOTS = join(WEB, "..", "data", "dev", "screenshots");
 const PORT = 8422;
+// Collision review runs at 1280 (default) and 1024: CAPTURE_WIDTH=1024 node ...
+const WIDTH = Number(process.env.CAPTURE_WIDTH ?? 1280);
+const SUFFIX = WIDTH === 1280 ? "" : `-w${WIDTH}`;
 
 await mkdir(SHOTS, { recursive: true });
 
@@ -27,7 +30,7 @@ const server = await createServer({
 await server.listen();
 
 const browser = await chromium.launch({ channel: "chrome" });
-const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+const page = await browser.newPage({ viewport: { width: WIDTH, height: 800 } });
 const problems = [];
 page.on("console", m => { if (m.type() === "error") problems.push(m.text()); });
 page.on("pageerror", e => problems.push(String(e)));
@@ -41,8 +44,9 @@ await page.waitForTimeout(1500);
 
 const shot = async (name) => {
   await page.waitForTimeout(400);
-  await page.screenshot({ path: join(SHOTS, name) });
-  console.log("  wrote " + name);
+  const file = name.replace(/\.png$/, `${SUFFIX}.png`);
+  await page.screenshot({ path: join(SHOTS, file) });
+  console.log("  wrote " + file);
 };
 
 // ——— M5: the arrival (concept §8.1) — the dark planet, already turning ———
@@ -97,4 +101,4 @@ if (problems.length) {
   for (const p of problems) console.error("  " + p);
   process.exit(1);
 }
-console.log(`\n7 screenshots in ${SHOTS} — zero errors against the real dataset.`);
+console.log(`\n7 screenshots (${WIDTH}px wide) in ${SHOTS} — zero errors against the real dataset.`);

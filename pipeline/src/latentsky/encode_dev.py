@@ -36,7 +36,7 @@ import numpy as np
 
 from . import budget, regrid
 from .encode import LayerRecord, encode_frame, load_lut, make_layer_record
-from .manifest import build_manifest, write_manifest
+from .manifest import build_manifest, run_hints, write_manifest
 from .ramps import DEFAULT_CONFIG, DEFAULT_LUT_DIR, load_ramps
 
 # The honest native input grid — CorrDiffTaiwan.input_coords() (§3.4.1):
@@ -56,9 +56,22 @@ GENERATED_NOTE = (
     "It is not a forecast."
 )
 
+# First-class run hints for the dev sample, in the same snake_case shape as
+# configs/event_*.yaml so both routes go through manifest.run_hints(). The UI
+# previously regex-parsed the storm name out of GENERATED_NOTE and guessed the
+# hero frame as "last" — these make both facts data, not heuristics.
+# hero_frame 3 is 2021-09-12T00:00:00Z, the Typhoon Chanthu frame (dev_meta.json
+# times[3]; the fifth frame, 12Z, is Chanthu weakening — 00Z is the developed one).
+DEV_HINTS = {
+    "storm_name": "Typhoon Chanthu",
+    "hero_frame": 3,
+    "place_label": "Taiwan · CWA model domain",
+}
+
 
 def encode_layers(raw_dir: pathlib.Path, out_dir: pathlib.Path,
-                  config: pathlib.Path, lut_dir: pathlib.Path) -> None:
+                  config: pathlib.Path, lut_dir: pathlib.Path,
+                  hints: dict = DEV_HINTS) -> None:
     t0 = time.perf_counter()
 
     npz = np.load(raw_dir / "cwb_sample.npz")
@@ -149,6 +162,7 @@ def encode_layers(raw_dir: pathlib.Path, out_dir: pathlib.Path,
                            "(dev stand-in for diffusion output)",
         },
         "generatedNote": GENERATED_NOTE,
+        **run_hints(hints),
     }
     manifest = build_manifest(run, times, records, specs)
     manifest_path = write_manifest(manifest, out_dir)
@@ -166,8 +180,16 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--out", type=pathlib.Path, required=True)
     ap.add_argument("--config", type=pathlib.Path, default=DEFAULT_CONFIG)
     ap.add_argument("--luts", type=pathlib.Path, default=DEFAULT_LUT_DIR)
+    ap.add_argument("--event-config", type=pathlib.Path, default=None,
+                    help="Event yaml whose storm_name/hero_frame/place_label override "
+                         "the dev-sample hints (the path a real run's encode takes)")
     args = ap.parse_args(argv)
-    encode_layers(args.raw, args.out, args.config, args.luts)
+    hints = DEV_HINTS
+    if args.event_config is not None:
+        import yaml
+
+        hints = yaml.safe_load(args.event_config.read_text(encoding="utf-8"))
+    encode_layers(args.raw, args.out, args.config, args.luts, hints=hints)
 
 
 if __name__ == "__main__":

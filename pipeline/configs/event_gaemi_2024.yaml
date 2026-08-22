@@ -10,3 +10,12 @@ ensemble_samples: 4
 seed: 20240724
 coarse_variables: [u10m, v10m, t2m, tcwv, msl]
 output: /out/gaemi_2024.zarr
+
+# First-class manifest run hints (schema run.stormName/heroFrame/placeLabel),
+# routed through latentsky.manifest.run_hints at encode time.
+storm_name: "Typhoon Gaemi"
+place_label: "Taiwan · CWA model domain"
+# Frame index into the hero window (6-hourly from init). 5 = 2024-07-25T06Z,
+# mid-window and just past the ~24 h landfall estimate above — TUNE after the
+# run: pick the most developed frame from the real fields, not this guess.
+hero_frame: 5

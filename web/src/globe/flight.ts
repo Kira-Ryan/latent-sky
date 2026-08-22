@@ -50,11 +50,19 @@ export interface HeroAnchor {
   y: number;
   /** False while the hero region is behind the planet's limb. */
   visible: boolean;
+  /**
+   * Window coordinates of the hero rectangle's top-edge midpoint — the place
+   * label's pin at the hero framing — or null while it is unprojectable
+   * (behind the limb, or off-screen).
+   */
+  top: { x: number; y: number } | null;
 }
 
 export class CameraDirector {
   private readonly heroRect: Rectangle | null;
   private readonly heroCentre: Cartesian3 | null;
+  /** Midpoint of the hero rectangle's top (northern) edge — the place label's pin. */
+  private readonly heroTopCentre: Cartesian3 | null;
   private readonly orbitDestination: Cartesian3;
   // Occludee test against a sphere just inside the ellipsoid's minor radius,
   // so a point sitting exactly on the surface never flickers at the limb.
@@ -63,6 +71,7 @@ export class CameraDirector {
     new Cartesian3(1, 0, 0),
   );
   private readonly anchorScratch = new Cartesian2();
+  private readonly topScratch = new Cartesian2();
   private spinRaf = 0;
   private keepAliveRaf = 0;
   private destroyed = false;
@@ -86,6 +95,7 @@ export class CameraDirector {
         Math.min(north + padY, 90),
       );
       this.heroCentre = Cartesian3.fromDegrees((west + east) / 2, (south + north) / 2);
+      this.heroTopCentre = Cartesian3.fromDegrees((west + east) / 2, north);
       this.orbitDestination = Cartesian3.fromDegrees(
         (west + east) / 2,
         (south + north) / 2,
@@ -94,6 +104,7 @@ export class CameraDirector {
     } else {
       this.heroRect = null;
       this.heroCentre = null;
+      this.heroTopCentre = null;
       this.orbitDestination = Cartesian3.fromDegrees(0, 15, ORBIT_HEIGHT);
     }
   }
@@ -205,9 +216,20 @@ export class CameraDirector {
         return;
       }
       this.occluder.cameraPosition = camera.positionWC;
+      // The place label's hero-view pin: the top-edge midpoint, projected
+      // independently of the centre so the label can hug the box at hero zoom.
+      let top: { x: number; y: number } | null = null;
+      if (this.heroTopCentre !== null && this.occluder.isPointVisible(this.heroTopCentre)) {
+        const w = SceneTransforms.worldToWindowCoordinates(
+          scene,
+          this.heroTopCentre,
+          this.topScratch,
+        );
+        if (w !== undefined) top = { x: w.x, y: w.y };
+      }
       const visible = this.occluder.isPointVisible(this.heroCentre);
       if (!visible) {
-        callback({ x: 0, y: 0, visible: false });
+        callback({ x: 0, y: 0, visible: false, top });
         return;
       }
       const win = SceneTransforms.worldToWindowCoordinates(
@@ -216,10 +238,10 @@ export class CameraDirector {
         this.anchorScratch,
       );
       if (win === undefined) {
-        callback({ x: 0, y: 0, visible: false });
+        callback({ x: 0, y: 0, visible: false, top });
         return;
       }
-      callback({ x: win.x, y: win.y, visible: true });
+      callback({ x: win.x, y: win.y, visible: true, top });
     });
   }
 

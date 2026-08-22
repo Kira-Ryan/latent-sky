@@ -9,11 +9,16 @@
   import Legend from "./Legend.svelte";
   import VariablePicker from "./VariablePicker.svelte";
   import Caveat from "./Caveat.svelte";
+  import PlaceLabel from "./PlaceLabel.svelte";
 
   let globeEl: HTMLDivElement;
   let api = $state<GlobeApi | null>(null);
   let bootError = $state<string | null>(null);
   let anchor = $state<HeroAnchor | null>(null);
+  // The hero-pointing overlay (invitation, marker, place label). Hidden only
+  // by the __latentSky.setHeroOverlay hook — the OG capture needs a shot with
+  // no hero affordances (web/tests/capture-og.mjs).
+  let heroOverlayVisible = $state(true);
 
   // The invitation names the storm honestly, from the manifest's own caption
   // (§8.4 — copy must match the data). The dev sample's note names Chanthu;
@@ -102,6 +107,11 @@
         },
         enterStorm: () => enterStorm(),
         returnToOrbit: () => returnToOrbit(),
+        // OG capture (licence-critical): hides the invitation, hero marker and
+        // place label so a global-only shot carries no hero affordances.
+        setHeroOverlay: (visible: boolean) => {
+          heroOverlayVisible = visible;
+        },
         getView: () => ({ view: sky.view, flying: sky.flying, split: sky.split }),
         requestRender: () => created!.requestRender(),
       };
@@ -143,7 +153,7 @@
   });
 
   const inviteVisible = $derived(
-    api !== null && api.heroAvailable && sky.view === "orbit" && !sky.flying,
+    api !== null && api.heroAvailable && heroOverlayVisible && sky.view === "orbit" && !sky.flying,
   );
   const inviteAnchored = $derived(inviteVisible && anchor !== null && anchor.visible);
 </script>
@@ -193,6 +203,13 @@
         <span class="invite-action">enter the storm</span>
       </button>
     {/if}
+
+    <!-- The place label ("is that Vietnam?" — real demo feedback): quiet,
+         always present in both stable views, pinned to the hero rectangle. -->
+    <PlaceLabel
+      {anchor}
+      visible={api !== null && api.heroAvailable && heroOverlayVisible}
+    />
 
     {#if sky.view === "hero" && !sky.flying}
       <button class="return" onclick={returnToOrbit} title="Esc">

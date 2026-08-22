@@ -10,3 +10,10 @@ ensemble_samples: 4
 seed: 20231004
 coarse_variables: [u10m, v10m, t2m, tcwv, msl]
 output: /out/koinu_2023.zarr
+
+# First-class manifest run hints (schema run.stormName/heroFrame/placeLabel).
+storm_name: "Typhoon Koinu"
+place_label: "Taiwan · CWA model domain"
+# 2 = 2023-10-05T06Z, around the Cape Eluanbi landfall — TUNE after the run:
+# pick the most developed frame from real fields.
+hero_frame: 2

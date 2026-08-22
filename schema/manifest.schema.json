@@ -24,7 +24,10 @@
             "downscaling": { "type": "string" }
           }
         },
-        "generatedNote": { "type": "string", "description": "The scientific-honesty caption shown in the UI. Required — a build without it fails." }
+        "generatedNote": { "type": "string", "description": "The scientific-honesty caption shown in the UI. Required — a build without it fails." },
+        "stormName": { "type": "string", "minLength": 1, "description": "Optional display name of the event, e.g. \"Typhoon Gaemi\". First-class so the UI never has to parse it out of generatedNote; absent when no storm claim should be made." },
+        "heroFrame": { "type": "integer", "minimum": 0, "description": "Optional index into frames of the most developed frame — where 'enter the storm' should arrive. The pipeline gates it against frames.length (a JSON schema cannot cross-reference); absent, the UI falls back to the last frame." },
+        "placeLabel": { "type": "string", "minLength": 1, "description": "Optional human label for the hero domain, e.g. \"Taiwan · CWA model domain\"." }
       }
     },
     "frames": {
