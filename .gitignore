@@ -17,3 +17,6 @@ data/zarr/
 # LOCAL ONLY — committing or deploying anything in here is a licence violation.
 data/dev/
 
+
+# Account-specific AWS environment (personal account ids/subnets) - local only
+infra/gpu/latentsky.env
