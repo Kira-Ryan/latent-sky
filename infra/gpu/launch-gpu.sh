@@ -37,18 +37,21 @@ while [[ $# -gt 0 ]]; do case "$1" in
 esac; done
 [[ -n "$CONFIG" ]] || { echo "--config <event_*.yaml> is required"; exit 2; }
 
-# Latest Ubuntu 24.04 AMI via SSM public parameter — never a hardcoded AMI id.
-AMI=$(aws ssm get-parameter --region "$REGION" \
-  --name /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id \
-  --query Parameter.Value --output text)
+# Newest Canonical Ubuntu 24.04 AMI by creation date. (The SSM public-parameter
+# path for noble returned ParameterNotFound when tested 22 Aug 2026 — describe-images
+# against Canonical's owner id is the lookup that actually works.)
+AMI=$(aws ec2 describe-images --region "$REGION" --owners 099720109477   --filters "Name=name,Values=ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"             "Name=state,Values=available"   --query "sort_by(Images,&CreationDate)[-1].ImageId" --output text)
 
+# Native-visible temp path: the AWS CLI is a Windows exe under Git Bash, so
+# /tmp/... is invisible to it (tested 22 Aug 2026). cygpath bridges the two worlds.
+NATIVE_TMP="$( (command -v cygpath >/dev/null 2>&1 && cygpath -m "${TEMP:-/tmp}") || echo /tmp )"
 sed -e "s|__DEADLINE_SECONDS__|$DEADLINE_SECONDS|" \
     -e "s|__JOB_TIMEOUT__|$JOB_TIMEOUT|" \
     -e "s|__REGION__|$REGION|" \
     -e "s|__BUCKET__|$BUCKET|" \
     -e "s|__CONFIG__|$CONFIG|" \
     -e "s|__IMAGE__|$IMAGE|" \
-    userdata.sh.tpl > /tmp/latentsky-userdata.sh
+    userdata.sh.tpl > "$NATIVE_TMP/latentsky-userdata.sh"
 
 echo "Launching $INSTANCE_TYPE in $REGION — deadman ${DEADLINE_SECONDS}s, config $CONFIG"
 aws ec2 run-instances --region "$REGION" \
@@ -62,7 +65,7 @@ aws ec2 run-instances --region "$REGION" \
   --metadata-options "HttpTokens=required,HttpPutResponseHopLimit=2" \
   --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"VolumeSize":300,"VolumeType":"gp3","DeleteOnTermination":true}}]' \
   --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=latentsky-forecast},{Key=project,Value=latent-sky}]" \
-  --user-data file:///tmp/latentsky-userdata.sh \
+  --user-data "file://$NATIVE_TMP/latentsky-userdata.sh" \
   --query 'Instances[0].InstanceId' --output text
 
 echo

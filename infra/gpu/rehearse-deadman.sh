@@ -16,11 +16,15 @@ KEY_NAME=${KEY_NAME:?set KEY_NAME=<ec2 keypair name>}
 SUBNET_ID=${SUBNET_ID:?set SUBNET_ID=<any public subnet>}
 SG_ID=${SG_ID:?set SG_ID=<any security group>}
 
-AMI=$(aws ssm get-parameter --region "$REGION" \
-  --name /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id \
-  --query Parameter.Value --output text)
+# Newest Canonical Ubuntu 24.04 AMI by creation date. (The SSM public-parameter
+# path for noble returned ParameterNotFound when tested 22 Aug 2026 — describe-images
+# against Canonical's owner id is the lookup that actually works.)
+AMI=$(aws ec2 describe-images --region "$REGION" --owners 099720109477   --filters "Name=name,Values=ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"             "Name=state,Values=available"   --query "sort_by(Images,&CreationDate)[-1].ImageId" --output text)
 
-cat > /tmp/deadman-test.sh <<'EOF'
+# Native-visible temp path: the AWS CLI is a Windows exe under Git Bash, so
+# /tmp/... is invisible to it (tested 22 Aug 2026). cygpath bridges the two worlds.
+NATIVE_TMP="$( (command -v cygpath >/dev/null 2>&1 && cygpath -m "${TEMP:-/tmp}") || echo /tmp )"
+cat > "$NATIVE_TMP/deadman-test.sh" <<'EOF'
 #!/bin/bash
 ( sleep 120; poweroff ) &
 echo "deadman armed" > /var/log/deadman-test.log
@@ -33,7 +37,7 @@ IID=$(aws ec2 run-instances --region "$REGION" \
   --instance-initiated-shutdown-behavior terminate \
   --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"DeleteOnTermination":true}}]' \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=latentsky-deadman-test}]' \
-  --user-data file:///tmp/deadman-test.sh \
+  --user-data "file://$NATIVE_TMP/deadman-test.sh" \
   --query 'Instances[0].InstanceId' --output text)
 echo "instance: $IID — waiting for it to kill itself (~3 min)…"
 
