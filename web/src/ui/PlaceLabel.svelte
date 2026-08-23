@@ -11,22 +11,19 @@
    * of the chrome's motion language.
    */
   import { sky } from "../state/store.svelte";
+  import { placeLabelFor } from "../data/manifest";
   import type { HeroAnchor } from "../globe";
 
   let { anchor = null, visible = true }: { anchor?: HeroAnchor | null; visible?: boolean } =
     $props();
 
-  // run.placeLabel is landing in the typed manifest loader separately; until
-  // the typed field exists, read it defensively and fall back to the known
-  // hero domain (the only public km-scale CorrDiff checkpoint is Taiwan).
-  const label = $derived.by(() => {
-    const run = sky.manifest?.run as { placeLabel?: unknown } | undefined;
-    const value = run?.placeLabel;
-    return typeof value === "string" && value.length > 0 ? value : "Taiwan · CWA model domain";
-  });
+  // The first-class run.placeLabel, and nothing else: when the manifest makes
+  // no place claim there is no label — inventing one is exactly the failure
+  // the typed field exists to prevent (see placeLabelFor).
+  const label = $derived(sky.manifest ? placeLabelFor(sky.manifest) : undefined);
 </script>
 
-{#if visible}
+{#if visible && label !== undefined}
   {#if sky.view === "hero"}
     {#if anchor?.top}
       <!-- Pinned to the hero rectangle's top edge; clamped clear of the

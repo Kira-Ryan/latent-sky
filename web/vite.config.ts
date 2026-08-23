@@ -98,9 +98,14 @@ export default defineConfig({
     viteStaticCopy({
       targets: [
         // NOT Widgets — CesiumWidget carries no stock chrome and widgets.css never ships (§6.4).
-        { src: "node_modules/cesium/Build/Cesium/Workers/*", dest: "cesium/Workers" },
-        { src: "node_modules/cesium/Build/Cesium/Assets/*", dest: "cesium/Assets" },
-        { src: "node_modules/cesium/Build/Cesium/ThirdParty/*", dest: "cesium/ThirdParty" },
+        // stripBase: 5 — vite-plugin-static-copy v4 preserves the FULL matched path under
+        // dest (measured: files landed at dist/cesium/Workers/node_modules/cesium/Build/…),
+        // which 404s every Worker on the deployed site. Stripping the 5 leading segments
+        // (node_modules/cesium/Build/Cesium/<dir>) restores dist/cesium/<dir>/* while keeping
+        // genuine subdirectories (Assets/Textures/**, Assets/IAU2006_XYS/**) intact.
+        { src: "node_modules/cesium/Build/Cesium/Workers/*", dest: "cesium/Workers", rename: { stripBase: 5 } },
+        { src: "node_modules/cesium/Build/Cesium/Assets/*", dest: "cesium/Assets", rename: { stripBase: 5 } },
+        { src: "node_modules/cesium/Build/Cesium/ThirdParty/*", dest: "cesium/ThirdParty", rename: { stripBase: 5 } },
       ],
     }),
     serveRepoData(),

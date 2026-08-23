@@ -105,7 +105,12 @@ export class CameraDirector {
       this.heroRect = null;
       this.heroCentre = null;
       this.heroTopCentre = null;
-      this.orbitDestination = Cartesian3.fromDegrees(0, 15, ORBIT_HEIGHT);
+      // No hero shipped — the public pre-forecast state. Open over the western
+      // Pacific: every configured event (Doksuri, Gaemi, Koinu) is a WNP
+      // typhoon, so the global ERA5 fields' story lives there, and the framing
+      // matches where a hero arrival would later point. Slightly north of the
+      // equator keeps the busy storm-track band off the limb.
+      this.orbitDestination = Cartesian3.fromDegrees(125, 18, ORBIT_HEIGHT);
     }
   }
 

@@ -12,6 +12,10 @@ Produces, per Architecture.md sections 5.5, 7.1 and 7.2:
   basemap/global-dark.webp tiny dark synthetic full-globe basemap (manifest
                            "basemap" object — exercises the basemap plumbing)
   manifest.json            conforming to schema/manifest.schema.json
+  manifest-hero-free.json  the same run with ONLY the kind:"global" layers and
+                           no run hints (stormName/heroFrame/placeLabel) — the
+                           public pre-forecast state the site first deploys in.
+                           Shares frames/, luts/ and basemap/ with manifest.json.
 
 Round-trip bit-identity of every WebP is asserted (encode -> decode -> compare),
 which proves lossless=True + exact=True on the installed Pillow.
@@ -329,6 +333,34 @@ def main() -> None:
     out.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"[manifest] {out}  ({out.stat().st_size} B, frames total {total} B)")
 
+    # The hero-free variant — the public pre-forecast state: global layers only,
+    # and none of the run hints, because a run with no hero makes no storm claim,
+    # has no arrival frame and names no place. Shares every asset on disk.
+    global_layers = {k: v for k, v in layers.items() if v["kind"] == "global"}
+    assert global_layers and all("pairWith" not in v for v in global_layers.values())
+    manifest_hero_free = {
+        "schemaVersion": 1,
+        "run": {
+            "id": "dev-fixture-synthetic-hero-free",
+            "kind": "dev-sample",
+            "model": {"prognostic": "synthetic", "downscaling": "synthetic"},
+            "generatedNote": (
+                "Synthetic smoke-test fixture — analytic fields, not weather. "
+                "Hero-free variant: global layers only, mirroring the site as "
+                "deployed before the first forecast run."
+            ),
+        },
+        "frames": FRAME_TIMES,
+        "basemap": {
+            "global": "basemap/global-dark.webp",
+            "globalRect": GLOBE,
+        },
+        "layers": global_layers,
+    }
+    out_hero_free = HERE / "manifest-hero-free.json"
+    out_hero_free.write_text(json.dumps(manifest_hero_free, indent=2) + "\n", encoding="utf-8")
+    print(f"[manifest] {out_hero_free}  ({out_hero_free.stat().st_size} B, {len(global_layers)} global layers)")
+
     # Formal validation against THE contract, if jsonschema is available.
     try:
         import jsonschema
@@ -337,7 +369,8 @@ def main() -> None:
         return
     schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
     jsonschema.validate(manifest, schema)
-    print(f"[schema] manifest validates against {SCHEMA.name} (jsonschema {jsonschema.__version__})")
+    jsonschema.validate(manifest_hero_free, schema)
+    print(f"[schema] both manifests validate against {SCHEMA.name} (jsonschema {jsonschema.__version__})")
 
 
 if __name__ == "__main__":

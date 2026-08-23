@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "run": {
+    "id": "dev-fixture-synthetic-hero-free",
+    "kind": "dev-sample",
+    "model": {
+      "prognostic": "synthetic",
+      "downscaling": "synthetic"
+    },
+    "generatedNote": "Synthetic smoke-test fixture \u2014 analytic fields, not weather. Hero-free variant: global layers only, mirroring the site as deployed before the first forecast run."
+  },
+  "frames": [
+    "2026-01-01T00:00:00Z",
+    "2026-01-01T06:00:00Z",
+    "2026-01-01T12:00:00Z"
+  ],
+  "basemap": {
+    "global": "basemap/global-dark.webp",
+    "globalRect": [
+      -180.0,
+      -90.0,
+      180.0,
+      90.0
+    ]
+  },
+  "layers": {
+    "wind10m-global": {
+      "kind": "global",
+      "variable": "wind10m",
+      "label": "10 m wind speed \u2014 global",
+      "units": "m/s",
+      "rect": [
+        -180.0,
+        -90.0,
+        180.0,
+        90.0
+      ],
+      "size": [
+        72,
+        36
+      ],
+      "lut": "luts/wind10m.lut.png",
+      "vmin": 0.0,
+      "vmax": 55.0,
+      "identity": "f154e5c6be3272a573e48636de59c5322b0b321c02e12706beda5cf571e785b8",
+      "frames": [
+        "frames/wind10m-global-000.webp",
+        "frames/wind10m-global-001.webp",
+        "frames/wind10m-global-002.webp"
+      ]
+    },
+    "tcwv-global": {
+      "kind": "global",
+      "variable": "tcwv",
+      "label": "Total column water vapour \u2014 global",
+      "units": "kg/m\u00b2",
+      "rect": [
+        -180.0,
+        -90.0,
+        180.0,
+        90.0
+      ],
+      "size": [
+        72,
+        36
+      ],
+      "lut": "luts/tcwv.lut.png",
+      "vmin": 0.0,
+      "vmax": 70.0,
+      "identity": "093d5a52ba014778ae71d5611f535f5b561cb4543126c00f94e08801d1ff82d3",
+      "frames": [
+        "frames/tcwv-global-000.webp",
+        "frames/tcwv-global-001.webp",
+        "frames/tcwv-global-002.webp"
+      ]
+    }
+  }
+}

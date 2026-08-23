@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { sky } from "../state/store.svelte";
   import { createGlobe, type GlobeApi, type HeroAnchor } from "../globe";
-  import type { Variable } from "../data/manifest";
+  import { heroFrameFor, stormNameFor, type Variable } from "../data/manifest";
   import { motionOk } from "../motion";
   import TimeScrubber from "./TimeScrubber.svelte";
   import RevealSlider from "./RevealSlider.svelte";
@@ -20,20 +20,21 @@
   // no hero affordances (web/tests/capture-og.mjs).
   let heroOverlayVisible = $state(true);
 
-  // The invitation names the storm honestly, from the manifest's own caption
-  // (§8.4 — copy must match the data). The dev sample's note names Chanthu;
-  // a Gaemi forecast run's note will name Gaemi. No storm named, no claim made.
-  const stormName = $derived(
-    /Typhoon\s+[A-Z][a-z]+/.exec(sky.manifest?.run.generatedNote ?? "")?.[0] ?? "the hero region",
-  );
+  // The invitation names the storm honestly (§8.4 — copy must match the data):
+  // the manifest's first-class run.stormName, falling back through
+  // stormNameFor()'s caption heuristic. No storm named, no claim made.
+  const stormName = $derived(sky.manifest ? stormNameFor(sky.manifest) : "the hero region");
 
   function enterStorm(): void {
-    if (!api || sky.flying || sky.view !== "orbit") return;
+    // heroAvailable guard: the test hook exposes this unconditionally, and a
+    // hero-free manifest has nowhere to fly — a silent no-op, never a throw.
+    if (!api || !api.heroAvailable || sky.flying || sky.view !== "orbit") return;
     api.setIdleSpin(false);
-    // Arrive on the most developed frame — the frames are chronological, and
-    // quiet early frames must never sit under the "enter the storm" copy.
+    // Arrive on the most developed frame — run.heroFrame when the manifest
+    // declares one, else the last frame: frames are chronological, and quiet
+    // early frames must never sit under the "enter the storm" copy.
     sky.playing = false;
-    sky.frame = Math.max(sky.frameCount - 1, 0);
+    sky.frame = sky.manifest ? heroFrameFor(sky.manifest) : Math.max(sky.frameCount - 1, 0);
     sky.view = "hero";
     sky.flying = true;
     api.flyToHero((completed) => {
@@ -156,6 +157,13 @@
     api !== null && api.heroAvailable && heroOverlayVisible && sky.view === "orbit" && !sky.flying,
   );
   const inviteAnchored = $derived(inviteVisible && anchor !== null && anchor.visible);
+
+  // Hero-free manifests (the public pre-forecast state): a quiet strip where
+  // the invitation would dock, promising what arrives with the first forecast
+  // run. Built-in copy — the schema's run object is closed
+  // (additionalProperties: false) and no existing field carries this; revisit
+  // if the schema ever grows a pre-forecast note.
+  const comingVisible = $derived(api !== null && !api.heroAvailable && heroOverlayVisible);
 </script>
 
 <svelte:window onkeydown={onWindowKeydown} />
@@ -202,6 +210,12 @@
         <span class="invite-sep" aria-hidden="true">·</span>
         <span class="invite-action">enter the storm</span>
       </button>
+    {/if}
+
+    <!-- The pre-forecast strip: hero-free manifests keep the orbit experience
+         whole, and this quiet line says why there is no way down yet. -->
+    {#if comingVisible}
+      <p class="coming">Kilometre-scale AI detail arrives with the first forecast run</p>
     {/if}
 
     <!-- The place label ("is that Vietnam?" — real demo feedback): quiet,
@@ -354,6 +368,30 @@
     text-transform: uppercase;
     font-size: 10.5px;
     letter-spacing: 0.18em;
+  }
+
+  /* ——— the pre-forecast strip (hero-free manifests) ——— */
+
+  .coming {
+    position: absolute;
+    z-index: 4;
+    left: 50%;
+    bottom: 26px;
+    transform: translateX(-50%);
+    margin: 0;
+    padding: 7px 16px;
+    font-size: 11.5px;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    max-width: calc(100vw - 32px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-dim);
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 999px;
+    backdrop-filter: blur(6px);
+    pointer-events: none;
   }
 
   /* ——— return to orbit ——— */

@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "run": {
+    "id": "public-era5-2021",
+    "kind": "dev-sample",
+    "model": {
+      "prognostic": "ERA5 reanalysis (ECMWF, anonymous ARCO mirror) \u2014 analysis, not a model forecast",
+      "downscaling": "none yet \u2014 the CorrDiffTaiwan ~2 km hero layer arrives with the first forecast run"
+    },
+    "generatedNote": "Global fields are ERA5 reanalysis (five 2021 timesteps), rendered through the Latent Sky pipeline. The kilometre-scale AI-generated hero layer arrives with the first forecast run. Contains modified Copernicus Climate Change Service information 2021."
+  },
+  "frames": [
+    "2021-02-02T00:00:00Z",
+    "2021-03-02T00:00:00Z",
+    "2021-04-02T00:00:00Z",
+    "2021-09-12T00:00:00Z",
+    "2021-09-12T12:00:00Z"
+  ],
+  "basemap": {
+    "global": "basemap/global-dark.webp",
+    "globalRect": [
+      -180.0,
+      -90.0,
+      180.0,
+      90.0
+    ]
+  },
+  "layers": {
+    "wind10m-global": {
+      "kind": "global",
+      "variable": "wind10m",
+      "label": "10 m wind speed \u2014 ERA5 analysis, 0.5\u00b0",
+      "units": "m/s",
+      "rect": [
+        -180.0,
+        -90.0,
+        180.0,
+        90.0
+      ],
+      "size": [
+        720,
+        361
+      ],
+      "lut": "luts/wind10m.lut.png",
+      "vmin": 0.0,
+      "vmax": 55.0,
+      "identity": "35fa35aab38a6d5672c63b3110b4700b0e30305923e4a4e3b77c5b945c0a790a",
+      "frames": [
+        "layers/wind10m-global/000.webp",
+        "layers/wind10m-global/001.webp",
+        "layers/wind10m-global/002.webp",
+        "layers/wind10m-global/003.webp",
+        "layers/wind10m-global/004.webp"
+      ]
+    },
+    "t2m-global": {
+      "kind": "global",
+      "variable": "t2m",
+      "label": "2 m temperature \u2014 clipped below \u221240 \u00b0C",
+      "units": "K",
+      "rect": [
+        -180.0,
+        -90.0,
+        180.0,
+        90.0
+      ],
+      "size": [
+        720,
+        361
+      ],
+      "lut": "luts/t2m.lut.png",
+      "vmin": 233.15,
+      "vmax": 323.15,
+      "identity": "875e152c3cc1182040fdebb2363f52ec8bde3126d7a39372d379744fb22b53ca",
+      "frames": [
+        "layers/t2m-global/000.webp",
+        "layers/t2m-global/001.webp",
+        "layers/t2m-global/002.webp",
+        "layers/t2m-global/003.webp",
+        "layers/t2m-global/004.webp"
+      ]
+    },
+    "tcwv-global": {
+      "kind": "global",
+      "variable": "tcwv",
+      "label": "Total column water vapour \u2014 ERA5 analysis, 0.5\u00b0",
+      "units": "kg/m\u00b2",
+      "rect": [
+        -180.0,
+        -90.0,
+        180.0,
+        90.0
+      ],
+      "size": [
+        720,
+        361
+      ],
+      "lut": "luts/tcwv.lut.png",
+      "vmin": 0.0,
+      "vmax": 80.0,
+      "identity": "410e98839e8a23361660eb22664ba01ac1350bdff1a4b2121dd4328cc759846f",
+      "frames": [
+        "layers/tcwv-global/000.webp",
+        "layers/tcwv-global/001.webp",
+        "layers/tcwv-global/002.webp",
+        "layers/tcwv-global/003.webp",
+        "layers/tcwv-global/004.webp"
+      ]
+    }
+  }
+}
