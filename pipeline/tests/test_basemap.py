@@ -6,6 +6,8 @@ these tests run in CI where web/ dependencies may not be installed.
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pytest
 from PIL import Image
@@ -74,6 +76,71 @@ def test_bake_is_deterministic(tmp_path):
     assert a.read_bytes() == b.read_bytes(), "two bakes of the same tiles must be byte-identical"
     img = Image.open(a)
     assert img.format == "WEBP" and img.size == (basemap.WIDTH, basemap.HEIGHT)
+
+
+# ------------------------------------------------------------------ coastlines
+
+def _geojson(tmp_path, features):
+    path = tmp_path / "coast.geojson"
+    path.write_text(json.dumps({"type": "FeatureCollection", "features": features}),
+                    encoding="utf-8")
+    return path
+
+
+def _line_feature(coords):
+    return {"type": "Feature", "properties": {},
+            "geometry": {"type": "LineString", "coordinates": coords}}
+
+
+def test_load_coastlines_reads_linestrings(tmp_path):
+    path = _geojson(tmp_path, [_line_feature([[0.0, 0.0], [10.0, 5.0], [20.0, 0.0]])])
+    lines = basemap.load_coastlines(path)
+    assert lines == [[(0.0, 0.0), (10.0, 5.0), (20.0, 0.0)]]
+
+
+def test_load_coastlines_fails_loudly(tmp_path):
+    with pytest.raises(basemap.BasemapError, match="missing"):
+        basemap.load_coastlines(tmp_path / "nowhere.geojson")
+    bad = _geojson(tmp_path, [{"type": "Feature", "properties": {},
+                               "geometry": {"type": "Polygon", "coordinates": [[[0, 0]]]}}])
+    with pytest.raises(basemap.BasemapError, match="Polygon"):
+        basemap.load_coastlines(bad)
+    with pytest.raises(basemap.BasemapError, match="empty"):
+        basemap.load_coastlines(_geojson(tmp_path, []))
+
+
+def test_committed_coastline_asset_loads():
+    """The cached Natural Earth 110m coastline must parse — it ships in the repo
+    (public domain, licences/MANIFEST.yaml) and the default bake depends on it."""
+    lines = basemap.load_coastlines()
+    assert len(lines) > 100, "110m coastline should carry ~134 LineStrings"
+    for coords in lines:
+        for lon, lat in coords:
+            assert -180.0 <= lon <= 180.0 and -90.0 <= lat <= 90.0
+
+
+def test_draw_coastlines_marks_the_line_and_splits_the_antimeridian():
+    canvas = np.zeros((basemap.HEIGHT, basemap.WIDTH, 3), dtype=np.uint8)
+    # Equator line lon 0..20 (y = HEIGHT/2), plus a deliberate antimeridian jump
+    # 170E -> 170W at lat 0 which must NOT paint the equator between them.
+    lines = [[(0.0, 0.0), (20.0, 0.0)], [(170.0, 0.0), (-170.0, 0.0)]]
+    out = basemap.draw_coastlines(canvas, lines)
+    colour = np.array([int(c) for c in basemap._hex_rgb(basemap.COASTLINE_COLOUR)])
+    y = basemap.HEIGHT // 2
+    x_mid = int((10.0 + 180.0) / 360.0 * basemap.WIDTH)      # on the drawn segment
+    assert (out[y, x_mid] == colour).all()
+    # the smear, if drawn, would cross lon 90E — probe there
+    x_smear = int((90.0 + 180.0) / 360.0 * basemap.WIDTH)
+    assert (out[y, x_smear] == 0).all(), "antimeridian jump smeared across the map"
+    # untouched rows stay untouched
+    assert (out[0] == 0).all()
+
+
+def test_draw_coastlines_rejects_bad_canvases():
+    with pytest.raises(ValueError, match="uint8"):
+        basemap.draw_coastlines(np.zeros((basemap.HEIGHT, basemap.WIDTH, 3), dtype=np.float32), [])
+    with pytest.raises(ValueError, match="canvas"):
+        basemap.draw_coastlines(np.zeros((10, 10, 3), dtype=np.uint8), [])
 
 
 def _minimal_layer(specs, lut_dir, out_dir):

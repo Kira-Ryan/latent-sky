@@ -10,10 +10,18 @@ SOUTHERNMOST row (tilemapresource.xml: Origin y=-90). Zoom 2 is 8x4 tiles of
 Styling is OFFLINE AUTHORING of scenery, not a per-layer runtime colour
 adjustment — §7.2(c)'s "never touch brightness/saturation on either layer"
 applies to the data layers at view time, not to baking a basemap. The palette
-comes from DOCS/concept-visual.html :root: ocean near --bg #070c1a, land a
-quiet desaturated blue-grey #16223c..#22304f (--line), coastlines legible from
-the value step alone. Nothing saturated: the data field must be the only loud
-thing on the planet.
+starts from DOCS/concept-visual.html :root: ocean near --bg #070c1a, land a
+quiet desaturated blue-grey. Live-site feedback (2026-08): continents were
+illegible under the opaque data layers, so the land anchors sit at roughly
+TWICE their original distance from the ocean floor — still desaturated
+blue-grey, nothing saturated: the data field must be the only loud thing on
+the planet.
+
+Coastlines: Natural Earth 110m physical coastline vectors (public domain,
+cached at pipeline/assets/ne_110m_coastline.geojson, audited in
+licences/MANIFEST.yaml) drawn as a subtle 1 px line just above the land
+ceiling, so shorelines stay legible even where a translucent field sits on
+top. The land ceiling is deliberately held BELOW the coastline colour.
 
 WebP lossy q90 is acceptable here and only here: the basemap is scenery, not
 data. Colour identity (§8's lossless-exact mandate) protects the LUT-ramped
@@ -28,10 +36,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import io
+import json
 import pathlib
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 DEFAULT_TILES = (
@@ -39,6 +48,8 @@ DEFAULT_TILES = (
     / "Assets" / "Textures" / "NaturalEarthII"
 )
 DEFAULT_OUT = REPO_ROOT / "data" / "dev" / "encoded" / "basemap" / "global-dark.webp"
+# Natural Earth 110m coastline (public domain) — the cached copy this repo audits.
+DEFAULT_COASTLINE = pathlib.Path(__file__).resolve().parents[2] / "assets" / "ne_110m_coastline.geojson"
 
 ZOOM = 2
 TILE_PX = 256
@@ -46,11 +57,17 @@ COLS, ROWS = 8, 4                       # zoom 2, geodetic: 45 deg per tile
 WIDTH, HEIGHT = COLS * TILE_PX, ROWS * TILE_PX  # 2048 x 1024
 QUALITY = 90
 
-# Palette — DOCS/concept-visual.html :root (--bg, --line) plus in-band midpoints.
+# Palette — dark family from DOCS/concept-visual.html :root (--bg #070c1a).
+# Land/ocean contrast DOUBLED against the original bake (live-site feedback:
+# continents were illegible under the opaque wind layer): LAND_DARK sits at
+# exactly 2x its original offset from OCEAN_DEEP (#16223c -> #25385e); the
+# LAND_BRIGHT ceiling is raised proportionally but capped BELOW the coastline
+# colour so the 1 px shoreline reads above every land pixel.
 OCEAN_DEEP = "#070c1a"    # --bg: open ocean floor colour
 OCEAN_SHELF = "#0b1226"   # slight lift over bright shallow shelves
-LAND_DARK = "#16223c"     # dark vegetated land
-LAND_BRIGHT = "#22304f"   # --line: deserts and ice caps — the ceiling; nothing brighter
+LAND_DARK = "#25385e"     # dark vegetated land — 2x the original #16223c offset
+LAND_BRIGHT = "#35496e"   # deserts and ice caps — the ceiling; below the coastline
+COASTLINE_COLOUR = "#3a4f7a"  # 1 px shoreline — the brightest thing on the basemap
 
 # Classifier constants, calibrated on the real zoom-2 tiles (2026-08-02):
 # NE2 ocean is strongly blue (B - max(R,G) ~ +30..+40), land is green/tan
@@ -124,6 +141,81 @@ def _lerp(c0: np.ndarray, c1: np.ndarray, t: np.ndarray) -> np.ndarray:
     return c0[None, None, :] + (c1 - c0)[None, None, :] * t[..., None]
 
 
+# ------------------------------------------------------------------ coastlines
+
+def load_coastlines(path: pathlib.Path = DEFAULT_COASTLINE) -> list[list[tuple[float, float]]]:
+    """Read the Natural Earth coastline GeoJSON -> list of (lon, lat) polylines.
+
+    The 110m physical coastline is a FeatureCollection of LineStrings whose
+    coordinates are already split at the antimeridian (verified on the cached
+    copy: zero segments jump more than 180 deg of longitude). Anything else in
+    the file is a loud error — a silently skipped geometry would present as a
+    missing shoreline.
+    """
+    path = pathlib.Path(path)
+    if not path.is_file():
+        raise BasemapError(
+            f"coastline GeoJSON missing: {path} — the Natural Earth 110m coastline "
+            "is cached under pipeline/assets/ (public domain, see licences/MANIFEST.yaml)"
+        )
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    if doc.get("type") != "FeatureCollection":
+        raise BasemapError(f"{path}: expected a FeatureCollection, got {doc.get('type')!r}")
+    lines: list[list[tuple[float, float]]] = []
+    for i, feature in enumerate(doc.get("features", [])):
+        geom = feature.get("geometry") or {}
+        if geom.get("type") != "LineString":
+            raise BasemapError(
+                f"{path}: feature {i} is {geom.get('type')!r}, expected LineString — "
+                "the 110m coastline layout changed; re-check the cached file"
+            )
+        coords = [(float(lon), float(lat)) for lon, lat in geom["coordinates"]]
+        if len(coords) >= 2:
+            lines.append(coords)
+    if not lines:
+        raise BasemapError(f"{path}: no LineString features — empty coastline")
+    return lines
+
+
+def _to_px(lon: float, lat: float) -> tuple[float, float]:
+    """Equirectangular (lon, lat) -> pixel coordinates on the WIDTH x HEIGHT canvas."""
+    x = (lon + 180.0) / 360.0 * WIDTH
+    y = (90.0 - lat) / 180.0 * HEIGHT
+    return min(x, WIDTH - 1.0), min(y, HEIGHT - 1.0)
+
+
+def draw_coastlines(
+    rgb: np.ndarray,
+    lines: list[list[tuple[float, float]]],
+    colour: str = COASTLINE_COLOUR,
+) -> np.ndarray:
+    """Draw 1 px coastline polylines onto a styled (H, W, 3) uint8 image.
+
+    Deterministic by construction: PIL's aliased 1 px line rasterisation over
+    fixed integer geometry. Segments jumping more than 180 deg of longitude are
+    split defensively (the cached 110m file has none) so a re-export of the
+    source data can never smear a line across the whole map.
+    """
+    if rgb.dtype != np.uint8 or rgb.ndim != 3 or rgb.shape[2] != 3:
+        raise ValueError(f"expected (H, W, 3) uint8 RGB, got {rgb.dtype} {rgb.shape}")
+    if rgb.shape[:2] != (HEIGHT, WIDTH):
+        raise ValueError(f"expected {HEIGHT}x{WIDTH} canvas, got {rgb.shape[:2]}")
+    img = Image.fromarray(rgb, mode="RGB")
+    draw = ImageDraw.Draw(img)
+    fill = tuple(int(v) for v in _hex_rgb(colour))
+    for coords in lines:
+        run: list[tuple[float, float]] = [_to_px(*coords[0])]
+        for (lon0, _), (lon1, lat1) in zip(coords, coords[1:]):
+            if abs(lon1 - lon0) > 180.0:        # antimeridian jump: break the polyline
+                if len(run) >= 2:
+                    draw.line(run, fill=fill, width=1)
+                run = []
+            run.append(_to_px(lon1, lat1))
+        if len(run) >= 2:
+            draw.line(run, fill=fill, width=1)
+    return np.asarray(img, dtype=np.uint8)
+
+
 def _encode_webp(styled: np.ndarray, quality: int) -> bytes:
     buf = io.BytesIO()
     Image.fromarray(styled, mode="RGB").save(
@@ -136,14 +228,16 @@ def bake(
     tiles_root: pathlib.Path = DEFAULT_TILES,
     out_path: pathlib.Path = DEFAULT_OUT,
     quality: int = QUALITY,
+    coastline_path: pathlib.Path = DEFAULT_COASTLINE,
 ) -> int:
-    """Stitch -> style -> WebP q90. Returns the byte size written.
+    """Stitch -> style -> coastlines -> WebP q90. Returns the byte size written.
 
     Matches ramps.bake's discipline: the image is encoded twice in memory and
     the bake fails loudly if the two encodes differ, so non-determinism can
     never land silently.
     """
     styled = style_dark(stitch(tiles_root))
+    styled = draw_coastlines(styled, load_coastlines(coastline_path))
     first = _encode_webp(styled, quality)
     second = _encode_webp(styled, quality)
     if first != second:
@@ -159,9 +253,10 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--tiles", type=pathlib.Path, default=DEFAULT_TILES)
     ap.add_argument("--out", type=pathlib.Path, default=DEFAULT_OUT)
     ap.add_argument("--quality", type=int, default=QUALITY)
+    ap.add_argument("--coastline", type=pathlib.Path, default=DEFAULT_COASTLINE)
     args = ap.parse_args(argv)
 
-    size = bake(args.tiles, args.out, args.quality)
+    size = bake(args.tiles, args.out, args.quality, args.coastline)
     digest = hashlib.sha256(args.out.read_bytes()).hexdigest()
     print(f"baked {args.out} — {WIDTH}x{HEIGHT} WebP q{args.quality}, "
           f"{size:,} B, sha256 {digest}")

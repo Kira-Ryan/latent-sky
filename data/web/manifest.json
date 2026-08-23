@@ -1,20 +1,31 @@
 {
   "schemaVersion": 1,
   "run": {
-    "id": "public-era5-2021",
+    "id": "public-era5-gaemi-week-2024",
     "kind": "dev-sample",
     "model": {
       "prognostic": "ERA5 reanalysis (ECMWF, anonymous ARCO mirror) \u2014 analysis, not a model forecast",
       "downscaling": "none yet \u2014 the CorrDiffTaiwan ~2 km hero layer arrives with the first forecast run"
     },
-    "generatedNote": "Global fields are ERA5 reanalysis (five 2021 timesteps), rendered through the Latent Sky pipeline. The kilometre-scale AI-generated hero layer arrives with the first forecast run. Contains modified Copernicus Climate Change Service information 2021."
+    "generatedNote": "Global fields are ERA5 reanalysis \u2014 sixteen 12-hourly timesteps spanning the week of Typhoon Gaemi (22\u201329 July 2024). Reanalysis, not a forecast. The kilometre-scale AI-generated hero layer arrives with the first forecast run. Contains modified Copernicus Climate Change Service information 2024."
   },
   "frames": [
-    "2021-02-02T00:00:00Z",
-    "2021-03-02T00:00:00Z",
-    "2021-04-02T00:00:00Z",
-    "2021-09-12T00:00:00Z",
-    "2021-09-12T12:00:00Z"
+    "2024-07-22T00:00:00Z",
+    "2024-07-22T12:00:00Z",
+    "2024-07-23T00:00:00Z",
+    "2024-07-23T12:00:00Z",
+    "2024-07-24T00:00:00Z",
+    "2024-07-24T12:00:00Z",
+    "2024-07-25T00:00:00Z",
+    "2024-07-25T12:00:00Z",
+    "2024-07-26T00:00:00Z",
+    "2024-07-26T12:00:00Z",
+    "2024-07-27T00:00:00Z",
+    "2024-07-27T12:00:00Z",
+    "2024-07-28T00:00:00Z",
+    "2024-07-28T12:00:00Z",
+    "2024-07-29T00:00:00Z",
+    "2024-07-29T12:00:00Z"
   ],
   "basemap": {
     "global": "basemap/global-dark.webp",
@@ -50,13 +61,24 @@
         "layers/wind10m-global/001.webp",
         "layers/wind10m-global/002.webp",
         "layers/wind10m-global/003.webp",
-        "layers/wind10m-global/004.webp"
+        "layers/wind10m-global/004.webp",
+        "layers/wind10m-global/005.webp",
+        "layers/wind10m-global/006.webp",
+        "layers/wind10m-global/007.webp",
+        "layers/wind10m-global/008.webp",
+        "layers/wind10m-global/009.webp",
+        "layers/wind10m-global/010.webp",
+        "layers/wind10m-global/011.webp",
+        "layers/wind10m-global/012.webp",
+        "layers/wind10m-global/013.webp",
+        "layers/wind10m-global/014.webp",
+        "layers/wind10m-global/015.webp"
       ]
     },
     "t2m-global": {
       "kind": "global",
       "variable": "t2m",
-      "label": "2 m temperature \u2014 clipped below \u221240 \u00b0C",
+      "label": "2 m temperature \u2014 ERA5 analysis, 0.5\u00b0",
       "units": "K",
       "rect": [
         -180.0,
@@ -69,15 +91,26 @@
         361
       ],
       "lut": "luts/t2m.lut.png",
-      "vmin": 233.15,
+      "vmin": 203.15,
       "vmax": 323.15,
-      "identity": "875e152c3cc1182040fdebb2363f52ec8bde3126d7a39372d379744fb22b53ca",
+      "identity": "f2f9f4222ddc87678d945d1ee7aed9efc92c5ffa85fe92022fef15d151c03ae3",
       "frames": [
         "layers/t2m-global/000.webp",
         "layers/t2m-global/001.webp",
         "layers/t2m-global/002.webp",
         "layers/t2m-global/003.webp",
-        "layers/t2m-global/004.webp"
+        "layers/t2m-global/004.webp",
+        "layers/t2m-global/005.webp",
+        "layers/t2m-global/006.webp",
+        "layers/t2m-global/007.webp",
+        "layers/t2m-global/008.webp",
+        "layers/t2m-global/009.webp",
+        "layers/t2m-global/010.webp",
+        "layers/t2m-global/011.webp",
+        "layers/t2m-global/012.webp",
+        "layers/t2m-global/013.webp",
+        "layers/t2m-global/014.webp",
+        "layers/t2m-global/015.webp"
       ]
     },
     "tcwv-global": {
@@ -104,7 +137,18 @@
         "layers/tcwv-global/001.webp",
         "layers/tcwv-global/002.webp",
         "layers/tcwv-global/003.webp",
-        "layers/tcwv-global/004.webp"
+        "layers/tcwv-global/004.webp",
+        "layers/tcwv-global/005.webp",
+        "layers/tcwv-global/006.webp",
+        "layers/tcwv-global/007.webp",
+        "layers/tcwv-global/008.webp",
+        "layers/tcwv-global/009.webp",
+        "layers/tcwv-global/010.webp",
+        "layers/tcwv-global/011.webp",
+        "layers/tcwv-global/012.webp",
+        "layers/tcwv-global/013.webp",
+        "layers/tcwv-global/014.webp",
+        "layers/tcwv-global/015.webp"
       ]
     }
   }

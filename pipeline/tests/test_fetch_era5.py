@@ -48,3 +48,60 @@ def test_fetch_refuses_unsorted_or_duplicate_times(tmp_path):
         fetch_era5.fetch(["2021-02-02T00:00:00Z", "2021-02-02T00:00:00Z"], tmp_path / "x.npz")
     with pytest.raises(fetch_era5.FetchError, match="no timestamps"):
         fetch_era5.fetch([], tmp_path / "x.npz")
+
+
+# ------------------------------------------------------------------ sequence mode
+
+def test_times_from_range_builds_the_gaemi_week():
+    times = fetch_era5.times_from_range("2024-07-22T00:00:00Z", "2024-07-29T18:00:00Z", 6)
+    assert len(times) == 32
+    assert times[0] == "2024-07-22T00:00:00Z"
+    assert times[1] == "2024-07-22T06:00:00Z"
+    assert times[-1] == "2024-07-29T18:00:00Z"
+    assert times == sorted(times) and len(set(times)) == 32
+    fetch_era5.check_final_era5(times)  # July 2024 is final ERA5 — must not raise
+
+
+def test_times_from_range_at_12_hourly_is_the_public_subset():
+    cache = fetch_era5.times_from_range("2024-07-22T00:00:00Z", "2024-07-29T18:00:00Z", 6)
+    public = fetch_era5.times_from_range("2024-07-22T00:00:00Z", "2024-07-29T12:00:00Z", 12)
+    assert len(public) == 16
+    assert public == cache[::2], "12-hourly must be exactly every other 6-hourly step"
+
+
+def test_times_from_range_rejects_ragged_and_inverted_ranges():
+    with pytest.raises(fetch_era5.FetchError, match="does not divide"):
+        fetch_era5.times_from_range("2024-07-22T00:00:00Z", "2024-07-22T07:00:00Z", 6)
+    with pytest.raises(fetch_era5.FetchError, match="after start"):
+        fetch_era5.times_from_range("2024-07-23T00:00:00Z", "2024-07-22T00:00:00Z", 6)
+    with pytest.raises(fetch_era5.FetchError, match="positive"):
+        fetch_era5.times_from_range("2024-07-22T00:00:00Z", "2024-07-23T00:00:00Z", 0)
+
+
+def test_attribution_years_names_the_data_years():
+    assert fetch_era5._attribution_years(["2024-07-22T00:00:00Z"]) == "2024"
+    assert fetch_era5._attribution_years(
+        ["2021-02-02T00:00:00Z", "2024-07-22T00:00:00Z"]
+    ) == "2021–2024"
+
+
+# ------------------------------------------------------------------ cache matching
+
+def _write_cache(path, times, shape):
+    import numpy as np
+    arrays = {k: np.zeros((len(times), *shape), dtype=np.float32) for k in fetch_era5.VARIABLES}
+    np.savez(path, **arrays,
+             latitude=np.zeros(shape[0]), longitude=np.zeros(shape[1]),
+             times=np.array(times), source=np.array("test"))
+
+
+def test_cache_matches_is_grid_aware(tmp_path):
+    """A half-degree cache must NOT satisfy a full-resolution request (and vice
+    versa) — the shapes carry meaning, not just the timestamps."""
+    times = ["2021-02-02T00:00:00Z", "2021-03-02T00:00:00Z"]
+    half = tmp_path / "half.npz"
+    _write_cache(half, times, fetch_era5.HALF_SHAPE)
+    assert fetch_era5.cache_matches(half, times, fetch_era5.HALF_SHAPE)
+    assert not fetch_era5.cache_matches(half, times, fetch_era5.ERA5_SHAPE)
+    assert not fetch_era5.cache_matches(half, times[:1], fetch_era5.HALF_SHAPE)
+    assert not fetch_era5.cache_matches(tmp_path / "absent.npz", times, fetch_era5.HALF_SHAPE)

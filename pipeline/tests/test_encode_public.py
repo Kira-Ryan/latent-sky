@@ -127,13 +127,14 @@ def test_prepare_out_dir_rejects_strangers(tmp_path):
 # ------------------------------------------------------------------ synthetic end-to-end
 
 def _synthetic_raw(tmp_path: pathlib.Path, times: list[str] | None = None) -> pathlib.Path:
-    """A synthetic era5_global.npz on the exact ARCO grid layout fetch_era5 caches."""
+    """A synthetic era5_gaemi_week.npz on the exact half-degree layout
+    fetch_era5 --half-degree caches (0.5°, lat 90..-90, lon 0..359.5)."""
     raw = tmp_path / "raw"
     raw.mkdir(exist_ok=True)
-    lat = 90.0 - 0.25 * np.arange(721)
-    lon = 0.25 * np.arange(1440)
+    lat = 90.0 - 0.5 * np.arange(361)
+    lon = 0.5 * np.arange(720)
     if times is None:
-        times = [f"2021-0{m}-02T00:00:00Z" for m in range(1, 6)]
+        times = list(encode_public.CACHE_TIMES)
     latg = np.radians(lat)[:, None]
     long_ = np.radians(lon)[None, :]
     frames = np.arange(len(times), dtype=np.float64)[:, None, None]
@@ -142,7 +143,7 @@ def _synthetic_raw(tmp_path: pathlib.Path, times: list[str] | None = None) -> pa
     t2m = 288.0 - 60.0 * np.sin(latg) ** 2 + 2.0 * frames + 3.0 * np.sin(long_)
     tcwv = 30.0 + 25.0 * np.cos(latg) * np.sin(long_ + frames)
     np.savez(
-        raw / "era5_global.npz",
+        raw / encode_public.RAW_NAME,
         latitude=lat, longitude=lon, times=np.array(times),
         u10m=u10m.astype(np.float32), v10m=v10m.astype(np.float32),
         t2m=t2m.astype(np.float32), tcwv=tcwv.astype(np.float32),
@@ -195,22 +196,66 @@ def test_manifest_is_the_public_preforecast_contract(public_tree):
 
     run = manifest["run"]
     assert run["kind"] == "dev-sample"
-    assert "Copernicus Climate Change Service information 2021" in run["generatedNote"]
+    assert "Copernicus Climate Change Service information 2024" in run["generatedNote"]
+    assert "Typhoon Gaemi" in run["generatedNote"]
+    assert "not a forecast" in run["generatedNote"]
     assert "hero layer arrives with the first forecast run" in run["generatedNote"]
-    # Hero-experience hints must be absent pre-forecast.
+    # Hero-experience hints must be absent pre-forecast. Gaemi is context in the
+    # note, never a stormName — a storm-chase affordance needs a hero layer.
     for key in ("stormName", "heroFrame", "placeLabel", "init"):
         assert key not in run, f"run.{key} has no meaning without a hero layer"
 
-    assert len(manifest["frames"]) == 5
+    # The REAL sequence: 16 12-hourly frames across the Gaemi week, in order.
+    assert manifest["frames"] == list(encode_public.PUBLIC_TIMES)
+    assert len(manifest["frames"]) == 16
+    assert manifest["frames"][0] == "2024-07-22T00:00:00Z"
+    assert manifest["frames"][-1] == "2024-07-29T12:00:00Z"
+
     assert sorted(manifest["layers"]) == ["t2m-global", "tcwv-global", "wind10m-global"]
     for layer_id, entry in manifest["layers"].items():
         assert entry["kind"] == "global", f"{layer_id}: NO hero layers may ship pre-forecast"
         assert entry["size"] == [720, 361]
         assert entry["rect"] == [-180.0, -90.0, 180.0, 90.0]
-        assert len(entry["frames"]) == 5
+        assert len(entry["frames"]) == 16
         for rel in [entry["lut"], *entry["frames"]]:
             assert (out / rel).is_file(), f"{layer_id}: manifest references missing {rel}"
     assert (out / manifest["basemap"]["global"]).is_file()
+
+
+def test_public_t2m_range_override_flows_from_the_manifest(public_tree, specs, lut_dir):
+    """The −70 °C floor ships in manifest vmin (where the Legend reads it), the
+    LUT bytes stay identical to the committed bake, and the other variables
+    keep their ramps.yaml ranges untouched."""
+    out, _, _ = public_tree
+    manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+
+    t2m = manifest["layers"]["t2m-global"]
+    assert t2m["vmin"] == encode_public.T2M_PUBLIC_VMIN == 203.15
+    assert t2m["vmax"] == specs["t2m"].vmax == 323.15
+    assert t2m["label"].startswith("2 m temperature"), "the label stays honest"
+    # LUT reuse: byte-identical to the ramps.yaml bake — colours only, no range.
+    vendored = (out / t2m["lut"]).read_bytes()
+    assert vendored == (lut_dir / "t2m.lut.png").read_bytes()
+
+    assert manifest["layers"]["wind10m-global"]["vmin"] == specs["wind10m"].vmin
+    assert manifest["layers"]["wind10m-global"]["vmax"] == specs["wind10m"].vmax
+    assert manifest["layers"]["tcwv-global"]["vmax"] == specs["tcwv"].vmax
+
+
+def test_public_specs_guards_its_own_preconditions(specs):
+    import dataclasses
+    overridden = encode_public.public_specs(specs)
+    assert overridden["t2m"].vmin == 203.15
+    assert specs["t2m"].vmin == 233.15, "the loaded specs must never be mutated"
+    assert overridden["wind10m"] is specs["wind10m"]
+
+    # A ramp alpha policy bakes the range into the LUT — the override must refuse.
+    ramped = dict(specs)
+    ramped["t2m"] = dataclasses.replace(
+        specs["t2m"], alpha={"policy": "ramp", "zeroBelow": 240.0, "oneBy": 250.0}
+    )
+    with pytest.raises(encode_public.EncodePublicError, match="opaque"):
+        encode_public.public_specs(ramped)
 
 
 def test_emitted_tree_contains_only_managed_entries(public_tree):
@@ -218,17 +263,25 @@ def test_emitted_tree_contains_only_managed_entries(public_tree):
     assert sorted(p.name for p in out.iterdir()) == sorted(encode_public.MANAGED_ENTRIES)
 
 
-def test_note_gate_rejects_the_wrong_frame_count(tmp_path, lut_dir):
-    raw = _synthetic_raw(tmp_path, times=[f"2021-0{m}-02T00:00:00Z" for m in range(1, 5)])
-    with pytest.raises(encode_public.EncodePublicError, match="five"):
+def test_sequence_gate_rejects_a_wrong_cache(tmp_path, lut_dir):
+    # Not the Gaemi week at all
+    raw = _synthetic_raw(tmp_path, times=[f"2021-0{m}-02T00:00:00Z" for m in range(1, 6)])
+    with pytest.raises(encode_public.EncodePublicError, match="Gaemi-week sequence"):
         encode_public.encode_layers(raw, tmp_path / "web", lut_dir=lut_dir)
 
 
-def test_note_gate_rejects_non_2021_timesteps(tmp_path, lut_dir):
-    times = [f"2021-0{m}-02T00:00:00Z" for m in range(1, 5)] + ["2022-01-02T00:00:00Z"]
-    raw = _synthetic_raw(tmp_path, times=times)
-    with pytest.raises(encode_public.EncodePublicError, match="2021"):
+def test_sequence_gate_rejects_a_truncated_cache(tmp_path, lut_dir):
+    # The right week but missing the final step — the caption would lie.
+    raw = _synthetic_raw(tmp_path, times=list(encode_public.CACHE_TIMES[:-1]))
+    with pytest.raises(encode_public.EncodePublicError, match="Gaemi-week sequence"):
         encode_public.encode_layers(raw, tmp_path / "web", lut_dir=lut_dir)
+
+
+def test_cache_and_public_time_constants_cohere():
+    assert len(encode_public.CACHE_TIMES) == 32
+    assert len(encode_public.PUBLIC_TIMES) == 16
+    assert encode_public.PUBLIC_TIMES == encode_public.CACHE_TIMES[::2]
+    assert all(t[11:13] in ("00", "12") for t in encode_public.PUBLIC_TIMES)
 
 
 # ------------------------------------------------------------------ the committed tree

@@ -13,20 +13,22 @@
  *   1. the canvas is not a uniform colour (the globe and field rendered)
  *   2. scrubbing one frame forward changes pixels
  *   3. tcwv (a global-only layer) is selectable and renders differently
- *   4. the manifest basemap is used — zero NaturalEarthII fallback requests
- *   5. zero console errors / failed console.asserts / page errors
- *   6. zero responses >= 400
- *   7. zero requests to api.cesium.com or ANY non-localhost host
+ *   4. the scrubber spans exactly the manifest's frames (frame-count agnostic)
+ *   5. the zoom floor policy: 8,000 km hero-free, default freedom with a hero
+ *   6. the manifest basemap is used — zero NaturalEarthII fallback requests
+ *   7. zero console errors / failed console.asserts / page errors
+ *   8. zero responses >= 400
+ *   9. zero requests to api.cesium.com or ANY non-localhost host
  *
  * With-hero only:
- *   8. the invitation ("enter the storm") is present in orbit
- *   9. the pre-forecast strip is absent — a shipped hero IS the way down
+ *  10. the invitation ("enter the storm") is present in orbit
+ *  11. the pre-forecast strip is absent — a shipped hero IS the way down
  *
  * Hero-free only:
- *   8. no invitation, no hero marker, no place label, no reveal overlay,
+ *  10. no invitation, no hero marker, no place label, no reveal overlay,
  *      no "Generated detail" toggle — no dead or dangling hero UI
- *   9. the quiet pre-forecast strip is present with the built-in copy
- *  10. __latentSky.enterStorm() is a safe no-op (still orbit, nothing thrown)
+ *  11. the quiet pre-forecast strip is present with the built-in copy
+ *  12. __latentSky.enterStorm() is a safe no-op (still orbit, nothing thrown)
  *
  * Exits non-zero on any failure.
  *
@@ -191,7 +193,8 @@ async function runFixture(fixture) {
         () => document.querySelector(".coming")?.textContent?.trim() ?? null,
       );
       check(
-        stripText === "Kilometre-scale AI detail arrives with the first forecast run",
+        stripText ===
+          "Global view: 0.5° reanalysis · kilometre-scale AI detail arrives with the first forecast run",
         "quiet pre-forecast strip present with the built-in copy",
         JSON.stringify(stripText),
       );
@@ -208,6 +211,32 @@ async function runFixture(fixture) {
         `view=${view.view} flying=${view.flying}`,
       );
     }
+
+    // Presentation discipline: the scrubber must span exactly the manifest's
+    // frames (frame-count agnosticism — the public manifest is moving 5 -> ~16
+    // frames and the UI must simply follow), and the camera zoom floor is a
+    // hero-free-only constraint: 8,000 km with no hero (0.5° mush below, tuned
+    // by eye — flight.ts HERO_FREE_MIN_ZOOM), the Cesium default (1 m) when a
+    // hero pair rewards the descent.
+    const scrub = await page.evaluate(() => ({
+      max: document.querySelector(".scrubber input[type=range]")?.max ?? null,
+      frameCount: globalThis.__latentSky.frameCount,
+      minZoom: document.querySelector(".globe")?.cesiumWidget?.scene
+        .screenSpaceCameraController.minimumZoomDistance,
+    }));
+    check(
+      scrub.max === String(scrub.frameCount - 1) && scrub.frameCount >= 3,
+      "scrubber spans the manifest's frames",
+      `range max=${scrub.max}, frameCount=${scrub.frameCount}`,
+    );
+    const expectedMinZoom = fixture.hero ? 1 : 8_000_000;
+    check(
+      scrub.minZoom === expectedMinZoom,
+      fixture.hero
+        ? "hero manifest keeps full zoom freedom (default minimumZoomDistance)"
+        : "hero-free manifest floors the camera at 8,000 km",
+      `minimumZoomDistance=${scrub.minZoom}`,
+    );
 
     const naturalEarth = allRequests.filter((u) => u.includes("NaturalEarthII"));
     check(

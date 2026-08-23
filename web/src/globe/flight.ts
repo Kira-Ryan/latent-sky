@@ -39,6 +39,19 @@ const HERO_PAD = 0.35;
 /** Orbit altitude in metres: the whole planet with quiet room around it
  *  (13.5e6 clipped the limb at 1280×800 — measured from the capture). */
 const ORBIT_HEIGHT = 17_500_000;
+/**
+ * Hero-free camera floor, metres above the ellipsoid. Pre-forecast manifests
+ * carry only the 0.5° global layers (~55 km/cell): descend too far and the
+ * field dissolves into full-bleed magnified cells with nothing underneath to
+ * reward the descent. Tuned by eye on the real ERA5 data at 1280×800: 4,000 km
+ * is still a wall of blocks with no limb anywhere in frame, while at 8,000 km
+ * the planet's disc (half-angle asin(R/(R+h)) = 26.3°) sits comfortably inside
+ * the 60° frustum's 30° half-angle in the larger viewport dimension at ANY
+ * aspect ratio — the limb stays in frame, so the globe always reads as a
+ * planet, not mush. A shipped hero pair keeps Cesium's default freedom — the
+ * ~2 km generated layer IS the zoom reward.
+ */
+const HERO_FREE_MIN_ZOOM = 8_000_000;
 /** Idle spin rate, radians per second (≈ 0.4°/s — perceptible, calm). */
 const SPIN_RATE = 0.4 * (Math.PI / 180);
 /** Fly-down duration, seconds (§8.4 asks for ~4–5 s with gentle easing). */
@@ -111,6 +124,13 @@ export class CameraDirector {
       // matches where a hero arrival would later point. Slightly north of the
       // equator keeps the busy storm-track band off the limb.
       this.orbitDestination = Cartesian3.fromDegrees(125, 18, ORBIT_HEIGHT);
+      // The presentation floor. Camera motion is owned here (§ v0.5 note:
+      // "camera motion is owned by a single CameraDirector"), so the bound
+      // lives here too. zoom3D measures the camera's cartographic height when
+      // clamping (verified in the 1.143.0 build), so this is precisely
+      // "cannot descend below HERO_FREE_MIN_ZOOM". Camera flights bypass the
+      // controller, but a hero-free build has no fly-down.
+      this.widget.scene.screenSpaceCameraController.minimumZoomDistance = HERO_FREE_MIN_ZOOM;
     }
   }
 

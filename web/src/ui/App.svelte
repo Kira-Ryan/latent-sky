@@ -215,7 +215,9 @@
     <!-- The pre-forecast strip: hero-free manifests keep the orbit experience
          whole, and this quiet line says why there is no way down yet. -->
     {#if comingVisible}
-      <p class="coming">Kilometre-scale AI detail arrives with the first forecast run</p>
+      <p class="coming">
+        Global view: 0.5° reanalysis · kilometre-scale AI detail arrives with the first forecast run
+      </p>
     {/if}
 
     <!-- The place label ("is that Vietnam?" — real demo feedback): quiet,

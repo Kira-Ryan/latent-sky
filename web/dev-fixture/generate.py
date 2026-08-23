@@ -5,10 +5,11 @@ so everything under web/dev-fixture/ is safe to commit.
 
 Produces, per Architecture.md sections 5.5, 7.1 and 7.2:
   luts/<var>.lut.png       256x1 RGBA LUTs (batlowK wind10m, thermal t2m, davos tcwv)
-  frames/*.webp            2 frames x {fine 64x64, coarse 8x8} hero layers for
-                           wind10m + t2m, plus full-globe "global" layers for
-                           wind10m (global + hero together) and tcwv (global
-                           only), WebP lossless with exact alpha preservation
+  frames/*.webp            16 12-hourly frames x {fine 64x64, coarse 8x8} hero
+                           layers for wind10m + t2m, plus full-globe "global"
+                           layers for wind10m (global + hero together) and tcwv
+                           (global only), WebP lossless with exact alpha
+                           preservation — the count mirrors the public manifest
   basemap/global-dark.webp tiny dark synthetic full-globe basemap (manifest
                            "basemap" object — exercises the basemap plumbing)
   manifest.json            conforming to schema/manifest.schema.json
@@ -28,6 +29,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -43,10 +45,18 @@ SCHEMA = HERE.parent.parent / "schema" / "manifest.schema.json"
 RECT = [116.1372, 19.5187, 125.5459, 27.9282]  # west, south, east, north
 GLOBE = [-180.0, -90.0, 180.0, 90.0]
 
-# Three frames, not two: with n frames the cross-fade index i spans [0, n-2],
-# so n >= 3 is the minimum that can exercise the slot-rotation path (advance by
-# exactly one frame) that band-ordered insertion must survive.
-FRAME_TIMES = ["2026-01-01T00:00:00Z", "2026-01-01T06:00:00Z", "2026-01-01T12:00:00Z"]
+# Sixteen frames at 12-hourly spacing, mirroring the public manifest's shape
+# (~8 days of uniformly spaced ERA5 steps) so the scrubber, tick spacing and
+# play duration are exercised at the real frame count. Still >= 3, the minimum
+# that can exercise the slot-rotation path (advance by exactly one frame) that
+# band-ordered insertion must survive. Fields are parametrised by progress
+# t = frame/(n-1), so the count can change again without features walking off
+# the domain.
+N_FRAMES = 16
+FRAME_TIMES = [
+    (datetime(2026, 1, 1) + timedelta(hours=12 * i)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for i in range(N_FRAMES)
+]
 
 FINE = 64
 COARSE = 8
@@ -119,21 +129,37 @@ def save_lut(var: str, rgba: np.ndarray) -> Path:
     return out
 
 
+def progress(frame: int) -> float:
+    """Progress through the run in [0, 1] — positional paths use this, so the
+    frame count can change without features walking off the domain. Phase terms
+    keep raw `frame` so every single frame step still visibly changes pixels."""
+    return frame / (len(FRAME_TIMES) - 1)
+
+
+# Progress at which the synthetic storm is deepest — run.heroFrame points here.
+STORM_PEAK_T = 0.8
+HERO_FRAME = round(STORM_PEAK_T * (N_FRAMES - 1))
+
+
 def synthetic_field(var: str, frame: int, n: int) -> np.ndarray:
     """Analytic field on an n x n grid. Frame-dependent so scrubbing changes pixels."""
+    t = progress(frame)
     yy, xx = np.meshgrid(np.linspace(0, 1, n), np.linspace(0, 1, n), indexing="ij")
     if var == "wind10m":
-        # A gaussian 'storm' that moves between frames over a weak swirl background.
-        cx, cy = 0.35 + 0.135 * frame, 0.40 + 0.09 * frame
+        # A gaussian 'storm' that crosses the domain over the run, deepest at
+        # STORM_PEAK_T, over a weak swirl background whose phase advances every
+        # frame (so adjacent frames always differ, at any frame count).
+        cx, cy = 0.25 + 0.40 * t, 0.35 + 0.27 * t
         r2 = (xx - cx) ** 2 + (yy - cy) ** 2
-        storm = 48.0 * np.exp(-r2 / 0.012)
+        peak = 34.0 + 14.0 * np.exp(-(((t - STORM_PEAK_T) ** 2) / 0.08))
+        storm = peak * np.exp(-r2 / 0.012)
         swirl = 3.0 + 2.5 * np.sin(8.0 * xx + frame) * np.cos(7.0 * yy)
         field = np.maximum(storm, swirl)
         # A calm corner below the 2 m/s alpha floor so transparency is exercised.
         calm = np.exp(-(((xx - 0.9) ** 2 + (yy - 0.1) ** 2) / 0.02))
         return field * (1.0 - 0.95 * calm)
     if var == "t2m":
-        warm_x = 0.3 + 0.3 * frame
+        warm_x = 0.25 + 0.5 * t
         grad = 285.0 + 18.0 * (1.0 - yy)
         blob = 9.0 * np.exp(-(((xx - warm_x) ** 2 + (yy - 0.5) ** 2) / 0.03))
         return grad + blob
@@ -142,21 +168,23 @@ def synthetic_field(var: str, frame: int, n: int) -> np.ndarray:
 
 def synthetic_global_field(var: str, frame: int, w: int, h: int) -> np.ndarray:
     """Analytic full-globe field, (h, w), row 0 = north pole. Frame-dependent."""
+    t = progress(frame)
     lat = np.linspace(90.0, -90.0, h)[:, None]  # degrees
     lon = np.linspace(-180.0, 180.0, w, endpoint=False)[None, :]
     if var == "wind10m":
-        # Two mid-latitude storm-track bands plus a storm that moves east
-        # between frames; calm tropics exercise the alpha tail globally.
+        # Two mid-latitude storm-track bands plus a storm that moves east over
+        # the run; calm tropics exercise the alpha tail globally. The ripple's
+        # phase advances per FRAME, keeping adjacent frames visibly different.
         jets = 16.0 * np.exp(-(((np.abs(lat) - 45.0) / 14.0) ** 2))
-        storm_lon = -60.0 + 40.0 * frame
+        storm_lon = -60.0 + 120.0 * t
         storm = 30.0 * np.exp(-(((lon - storm_lon) / 25.0) ** 2 + ((lat - 40.0) / 12.0) ** 2))
         ripple = 2.0 * np.sin(np.radians(lon * 3.0 + frame * 40.0)) * np.cos(np.radians(lat * 2.0))
         return np.maximum(jets + ripple, storm)
     if var == "tcwv":
         # Moist tropics drying towards the poles, with a moisture plume that
-        # advances between frames.
+        # advances over the run and per-frame waves.
         base = 52.0 * np.exp(-((lat / 32.0) ** 2)) + 4.0
-        plume_lon = 100.0 + 35.0 * frame
+        plume_lon = 100.0 + 55.0 * t
         plume = 16.0 * np.exp(-(((lon - plume_lon) / 30.0) ** 2 + ((lat - 15.0) / 14.0) ** 2))
         waves = 3.0 * np.sin(np.radians(lon * 2.0 - frame * 55.0)) * np.exp(-((lat / 45.0) ** 2))
         return base + plume + waves
@@ -315,10 +343,10 @@ def main() -> None:
             ),
             # First-class run hints (schema run.*) so the web parsing of all
             # three optional fields is exercised by the smoke test. Honest
-            # values: the 'storm' is an analytic gaussian, and frame 2 is its
-            # most developed frame (it grows monotonically with frame index).
+            # values: the 'storm' is an analytic gaussian whose amplitude peaks
+            # at STORM_PEAK_T of the run — HERO_FRAME is its deepest frame.
             "stormName": "Synthetic vortex",
-            "heroFrame": 2,
+            "heroFrame": HERO_FRAME,
             "placeLabel": "Synthetic test domain",
         },
         "frames": FRAME_TIMES,
