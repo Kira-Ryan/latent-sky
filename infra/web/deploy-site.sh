@@ -372,7 +372,10 @@ aws_mutate s3 cp "$DIST/data/web/manifest.json" "s3://$SITE_BUCKET/data/web/mani
 
 # ── 7. Invalidation — the two entry points ONLY, never /* ──────────────────────
 say "── invalidation: /index.html /data/web/manifest.json"
-INVALIDATION_ID=$(aws_mutate cloudfront create-invalidation --distribution-id "$DIST_ID" \
+# MSYS_NO_PATHCONV: Git Bash rewrites leading-slash args into Windows paths for
+# native exes — "/index.html" reached CloudFront as "C:/Program Files/Git/index.html"
+# and the API refused it (verified failure, 23 Aug 2026).
+INVALIDATION_ID=$(MSYS_NO_PATHCONV=1 aws_mutate cloudfront create-invalidation --distribution-id "$DIST_ID" \
   --paths "/index.html" "/data/web/manifest.json" \
   --query "Invalidation.Id" --output text)
 if [[ -z "$INVALIDATION_ID" ]]; then
