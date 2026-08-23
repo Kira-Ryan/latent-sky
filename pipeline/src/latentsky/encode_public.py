@@ -104,7 +104,16 @@ PUBLIC_PLAN = [
     ("wind10m-global", "wind10m", " — ERA5 analysis, 0.5°"),
     ("t2m-global", "t2m", " — ERA5 analysis, 0.5°"),
     ("tcwv-global", "tcwv", " — ERA5 analysis, 0.5°"),
+    ("msl-global", "msl", " — ERA5 analysis, 0.5°"),
 ]
+
+# Public MSLP range: symmetric about the vik ramp's 1013.25 hPa midpoint (§7.1 —
+# a diverging ramp about an off-centre midpoint lies about anomaly sign). Sized
+# from the MEASURED Gaemi-week extremes (939.96..1050.11 hPa over all 32 fetched
+# steps; the deep tail is Gaemi itself): the low side needs 73.29 hPa, so ±75.
+# The high side wastes ~38 hPa of ramp — the price of an honest midpoint.
+# Same LUT-reuse legality argument as t2m: opaque alpha => range-independent LUT.
+MSL_PUBLIC_SPAN_HPA = 75.0
 
 # The note gates below (the exact Gaemi-week cache, 12-hourly public frames)
 # exist because this string asserts those facts — the caption and the data
@@ -230,6 +239,25 @@ def public_specs(specs: dict[str, RampSpec]) -> dict[str, RampSpec]:
         )
     out = dict(specs)
     out["t2m"] = dataclasses.replace(spec, vmin=T2M_PUBLIC_VMIN)
+
+    # msl: tighten the provisional ±80 hPa hero-side span to the measured public
+    # span, keeping the midpoint EXACTLY at 1013.25 so the vik divergence stays
+    # honest. Same opaque-alpha requirement as the t2m override.
+    msl = specs["msl"]
+    if msl.alpha["policy"] != "opaque":
+        raise EncodePublicError(
+            "msl alpha policy is no longer 'opaque' — the public range override "
+            "reuses the baked LUT, which is only range-independent for opaque alpha."
+        )
+    midpoint = (msl.vmin + msl.vmax) / 2.0
+    if abs(midpoint - 1013.25) > 1e-6:
+        raise EncodePublicError(
+            f"ramps.yaml msl midpoint {midpoint} != 1013.25 — the diverging ramp "
+            "contract broke upstream; refusing to derive a public span from it."
+        )
+    out["msl"] = dataclasses.replace(
+        msl, vmin=1013.25 - MSL_PUBLIC_SPAN_HPA, vmax=1013.25 + MSL_PUBLIC_SPAN_HPA
+    )
     return out
 
 
@@ -355,12 +383,15 @@ def encode_layers(
         "wind10m": np.hypot(npz["u10m"].astype(np.float64), npz["v10m"].astype(np.float64)),
         "t2m": npz["t2m"].astype(np.float64),
         "tcwv": npz["tcwv"].astype(np.float64),
+        "msl": npz["msl"].astype(np.float64) / 100.0,   # ARCO stores Pa; ramps are hPa
     }
     t2m_below = float((fields["t2m"] < specs["t2m"].vmin).mean() * 100.0)
     print(f"era5 ranges: wind10m {fields['wind10m'].min():.2f}..{fields['wind10m'].max():.2f} m/s | "
           f"t2m {fields['t2m'].min():.2f}..{fields['t2m'].max():.2f} K "
           f"({t2m_below:.4f}% below the public {specs['t2m'].vmin} K floor) | "
-          f"tcwv {fields['tcwv'].min():.2f}..{fields['tcwv'].max():.2f} kg/m2")
+          f"tcwv {fields['tcwv'].min():.2f}..{fields['tcwv'].max():.2f} kg/m2 | "
+          f"msl {fields['msl'].min():.2f}..{fields['msl'].max():.2f} hPa "
+          f"(public span ±{MSL_PUBLIC_SPAN_HPA} about 1013.25)")
 
     records: list[LayerRecord] = []
     layer_bytes: dict[str, int] = {}

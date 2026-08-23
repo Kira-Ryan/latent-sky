@@ -142,11 +142,13 @@ def _synthetic_raw(tmp_path: pathlib.Path, times: list[str] | None = None) -> pa
     v10m = 6.0 * np.cos(2.0 * long_ - frames) * np.cos(latg)
     t2m = 288.0 - 60.0 * np.sin(latg) ** 2 + 2.0 * frames + 3.0 * np.sin(long_)
     tcwv = 30.0 + 25.0 * np.cos(latg) * np.sin(long_ + frames)
+    msl = 101325.0 + 1500.0 * np.sin(2.0 * long_ + frames) * np.cos(latg)  # Pa, like ARCO
     np.savez(
         raw / encode_public.RAW_NAME,
         latitude=lat, longitude=lon, times=np.array(times),
         u10m=u10m.astype(np.float32), v10m=v10m.astype(np.float32),
         t2m=t2m.astype(np.float32), tcwv=tcwv.astype(np.float32),
+        msl=msl.astype(np.float32),
     )
     return raw
 
@@ -211,7 +213,7 @@ def test_manifest_is_the_public_preforecast_contract(public_tree):
     assert manifest["frames"][0] == "2024-07-22T00:00:00Z"
     assert manifest["frames"][-1] == "2024-07-29T12:00:00Z"
 
-    assert sorted(manifest["layers"]) == ["t2m-global", "tcwv-global", "wind10m-global"]
+    assert sorted(manifest["layers"]) == ["msl-global", "t2m-global", "tcwv-global", "wind10m-global"]
     for layer_id, entry in manifest["layers"].items():
         assert entry["kind"] == "global", f"{layer_id}: NO hero layers may ship pre-forecast"
         assert entry["size"] == [720, 361]

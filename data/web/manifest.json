@@ -150,6 +150,44 @@
         "layers/tcwv-global/014.webp",
         "layers/tcwv-global/015.webp"
       ]
+    },
+    "msl-global": {
+      "kind": "global",
+      "variable": "msl",
+      "label": "Mean sea-level pressure \u2014 ERA5 analysis, 0.5\u00b0",
+      "units": "hPa",
+      "rect": [
+        -180.0,
+        -90.0,
+        180.0,
+        90.0
+      ],
+      "size": [
+        720,
+        361
+      ],
+      "lut": "luts/msl.lut.png",
+      "vmin": 938.25,
+      "vmax": 1088.25,
+      "identity": "b44165f97b8e9df5a94e3e4b95a9542bd27e18746758cd95dcff53c202fa9936",
+      "frames": [
+        "layers/msl-global/000.webp",
+        "layers/msl-global/001.webp",
+        "layers/msl-global/002.webp",
+        "layers/msl-global/003.webp",
+        "layers/msl-global/004.webp",
+        "layers/msl-global/005.webp",
+        "layers/msl-global/006.webp",
+        "layers/msl-global/007.webp",
+        "layers/msl-global/008.webp",
+        "layers/msl-global/009.webp",
+        "layers/msl-global/010.webp",
+        "layers/msl-global/011.webp",
+        "layers/msl-global/012.webp",
+        "layers/msl-global/013.webp",
+        "layers/msl-global/014.webp",
+        "layers/msl-global/015.webp"
+      ]
     }
   }
 }

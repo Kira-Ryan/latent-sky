@@ -46,6 +46,7 @@ VARIABLES = {
     "u10m": "10m_u_component_of_wind",
     "v10m": "10m_v_component_of_wind",
     "tcwv": "total_column_water_vapour",
+    "msl": "mean_sea_level_pressure",   # Pa in ARCO; encode converts to hPa
 }
 
 # §3.6: ERA5T for the most recent ~3 months is later overwritten by final ERA5.
