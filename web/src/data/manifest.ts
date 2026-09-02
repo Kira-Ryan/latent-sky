@@ -5,11 +5,11 @@
  * malformed manifest must fail loudly, never render half a globe.
  */
 
-export type Variable = "wind10m" | "t2m" | "mrr" | "tcwv" | "msl";
-export type LayerKind = "global" | "hero-fine" | "hero-coarse";
+export type Variable = "wind10m" | "t2m" | "mrr" | "refc" | "tcwv" | "msl";
+export type LayerKind = "global" | "hero-fine" | "hero-coarse" | "hero-observed";
 
-const VARIABLES: readonly Variable[] = ["wind10m", "t2m", "mrr", "tcwv", "msl"];
-const KINDS: readonly LayerKind[] = ["global", "hero-fine", "hero-coarse"];
+const VARIABLES: readonly Variable[] = ["wind10m", "t2m", "mrr", "refc", "tcwv", "msl"];
+const KINDS: readonly LayerKind[] = ["global", "hero-fine", "hero-coarse", "hero-observed"];
 
 export interface RunInfo {
   id: string;
@@ -45,6 +45,10 @@ export interface LayerDef {
   /** Absolute URL per frame, same length and order as Manifest.frameIso */
   frameUrls: string[];
   pairWith?: string;
+  /** Source model resolution in km. The UI STATES this, so it is data, never
+   *  inferred: the reveal pills hardcoded "2 km" and lied the moment a 3 km
+   *  model shipped. Absent means say nothing rather than guess. */
+  nativeKm?: number;
 }
 
 /**
@@ -71,8 +75,17 @@ export interface Manifest {
   layers: Map<string, LayerDef>;
 }
 
-export function manifestUrlFromLocation(loc: Location = window.location): string {
-  return new URLSearchParams(loc.search).get("manifest") ?? "/data/web/manifest.json";
+/** The single-manifest location the site shipped with — also the catalogue-less fallback. */
+export const DEFAULT_MANIFEST_URL = "/data/web/manifest.json";
+
+/**
+ * `?manifest=` — an explicit single-manifest override (dev fixtures, capture
+ * scripts, previews). When present it bypasses the catalogue entirely: one
+ * manifest, no event switcher, exactly the behaviour that shipped.
+ */
+export function explicitManifestUrl(loc: Location = window.location): string | null {
+  const url = new URLSearchParams(loc.search).get("manifest");
+  return url !== null && url.length > 0 ? url : null;
 }
 
 function fail(path: string, message: string): never {
@@ -221,6 +234,7 @@ export function parseManifest(raw: unknown, baseUrl: URL): Manifest {
       identity: requireString(l.identity, `${p}.identity`),
       frameUrls,
       pairWith: l.pairWith === undefined ? undefined : requireString(l.pairWith, `${p}.pairWith`),
+      nativeKm: typeof l.nativeKm === "number" && l.nativeKm > 0 ? l.nativeKm : undefined,
     });
   }
 

@@ -93,11 +93,21 @@ export class BitmapRing {
     }
   }
 
-  destroy(): void {
+  /**
+   * Close and drop every cached bitmap. Called on event switches (after the
+   * outgoing event's ImageryLayers have been removed, so no live layer can be
+   * awaiting one of these) and at teardown. Pending fetches are closed when
+   * they resolve, so an in-flight decode cannot leak either.
+   */
+  clear(): void {
     for (const p of this.cache.values()) {
-      p.then((bmp) => bmp.close()).catch(() => undefined);
+      p.then((bmp) => bmp.close()).catch(() => undefined /* already surfaced in get() */);
     }
     this.cache.clear();
+  }
+
+  destroy(): void {
+    this.clear();
   }
 }
 

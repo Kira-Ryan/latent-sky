@@ -8,6 +8,15 @@
  * Earth II TMS is the fallback for manifests without one. Either way, zero
  * requests leave the deployment origin. The lost atmospheric halo is replaced
  * by SkyAtmosphere, which is a separate object and never touches imagery.
+ *
+ * The widget outlives any one manifest. Event switching re-initialises every
+ * per-manifest object (base layer, timeline, renderer, camera director) against
+ * the SAME widget rather than rebuilding it, because CesiumWidget.destroy()
+ * never calls WEBGL_lose_context (verified in the 1.143.0 build) — a widget per
+ * switch would accumulate live WebGL contexts until the browser force-loses the
+ * oldest, which on a switch-heavy session means losing the visible globe. So
+ * the base layer is NOT constructed here: `baseLayer: false`, and each session
+ * adds and removes its own at collection index 0.
  */
 import {
   CesiumWidget,
@@ -28,7 +37,13 @@ export interface WidgetOptions {
   pixelReadback?: boolean;
 }
 
-function baseLayer(basemap?: BasemapDef): ImageryLayer {
+/**
+ * The session's base imagery layer: the manifest's offline-baked global
+ * basemap, or the bundled Natural Earth II TMS when a manifest declares none.
+ * Owned by the session (globe/index.ts), not the widget — a switched-to event
+ * may ship a different basemap, and a stale one must never survive the switch.
+ */
+export function createBaseLayer(basemap?: BasemapDef): ImageryLayer {
   if (basemap?.globalUrl !== undefined) {
     const [west, south, east, north] = basemap.globalRect;
     return ImageryLayer.fromProviderAsync(
@@ -46,15 +61,13 @@ function baseLayer(basemap?: BasemapDef): ImageryLayer {
   );
 }
 
-export function createWidget(
-  container: HTMLElement,
-  options: WidgetOptions = {},
-  basemap?: BasemapDef,
-): CesiumWidget {
+export function createWidget(container: HTMLElement, options: WidgetOptions = {}): CesiumWidget {
   Ion.defaultAccessToken = ""; // §9.5 — zero ion, zero quota, zero api.cesium.com traffic
 
   const widget = new CesiumWidget(container, {
-    baseLayer: baseLayer(basemap),
+    // false, not undefined: undefined defaults baseLayer to ImageryLayer.fromWorldImagery(),
+    // which is an ion asset (§9.5). The session adds the real base layer at index 0.
+    baseLayer: false,
     terrainProvider: new EllipsoidTerrainProvider(),
     skyBox: false, // also drops 864 KB of star JPEGs a weather globe does not need
     skyAtmosphere: new SkyAtmosphere(),

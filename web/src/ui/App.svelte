@@ -2,7 +2,8 @@
   import { onMount } from "svelte";
   import { sky } from "../state/store.svelte";
   import { createGlobe, type GlobeApi, type HeroAnchor } from "../globe";
-  import { heroFrameFor, stormNameFor, type Variable } from "../data/manifest";
+  import { heroFrameFor, loadManifest, stormNameFor, type Variable } from "../data/manifest";
+  import { writeEventToUrl } from "../data/catalogue";
   import { motionOk } from "../motion";
   import TimeScrubber from "./TimeScrubber.svelte";
   import RevealSlider from "./RevealSlider.svelte";
@@ -10,8 +11,19 @@
   import VariablePicker from "./VariablePicker.svelte";
   import Caveat from "./Caveat.svelte";
   import PlaceLabel from "./PlaceLabel.svelte";
+  import EventSwitcher from "./EventSwitcher.svelte";
 
   let globeEl: HTMLDivElement;
+  /**
+   * The long-lived façade: one CesiumWidget for the page, with the per-manifest
+   * session swapped underneath it on every event switch (see globe/index.ts).
+   */
+  let globe: GlobeApi | null = null;
+  /**
+   * Mirrors `globe` only while a session is actually live — null during boot
+   * and for the duration of a switch, so every piece of hero chrome stands down
+   * rather than pointing at data that is being replaced.
+   */
   let api = $state<GlobeApi | null>(null);
   let bootError = $state<string | null>(null);
   let anchor = $state<HeroAnchor | null>(null);
@@ -24,6 +36,49 @@
   // the manifest's first-class run.stormName, falling back through
   // stormNameFor()'s caption heuristic. No storm named, no claim made.
   const stormName = $derived(sky.manifest ? stormNameFor(sky.manifest) : "the hero region");
+
+  /**
+   * Point the globe at the manifest currently in the store. This is the whole
+   * of "switching must fully re-initialise the globe" on the UI side: the store
+   * has already been reset by sky.init(), globe.load() disposes the previous
+   * session and builds a fresh one, and `api` goes null across the gap so no
+   * $effect can push stale state into either.
+   */
+  async function activate(): Promise<void> {
+    const manifest = sky.manifest;
+    if (!manifest) throw new Error("store has no manifest to activate");
+    if (!globe) throw new Error("activate() before the globe was created");
+    api = null;
+    anchor = null;
+    await globe.load(manifest);
+    api = globe;
+  }
+
+  /**
+   * Switch to another catalogue event. The manifest is fetched and validated
+   * BEFORE anything is torn down, so a bad manifest leaves the current event on
+   * screen rather than emptying the globe.
+   */
+  async function selectEvent(id: string): Promise<void> {
+    const catalogue = sky.catalogue;
+    if (!catalogue || sky.switching || id === sky.activeEventId) return;
+    const target = catalogue.events.find((e) => e.id === id);
+    if (!target) throw new Error(`no catalogue event with id ${JSON.stringify(id)}`);
+
+    sky.switching = true;
+    try {
+      const manifest = await loadManifest(target.manifestUrl);
+      sky.activeEventId = target.id;
+      writeEventToUrl(catalogue, target.id); // the address bar is the shareable link
+      sky.init(manifest); // full view reset — variable, time, wipe, camera state
+      await activate();
+    } catch (err: unknown) {
+      bootError = err instanceof Error ? (err.stack ?? err.message) : String(err);
+      throw err; // surface loudly — the on-screen panel is not a substitute
+    } finally {
+      sky.switching = false;
+    }
+  }
 
   function enterStorm(): void {
     // heroAvailable guard: the test hook exposes this unconditionally, and a
@@ -64,41 +119,61 @@
     let disposed = false;
     let created: GlobeApi | null = null;
     let removeAnchor: (() => void) | null = null;
+    let removeFrame: (() => void) | null = null;
     const stopSpin = (): void => created?.setIdleSpin(false);
     const spinStopEvents = ["pointerdown", "wheel", "keydown", "touchstart"] as const;
     (async () => {
-      const manifest = sky.manifest;
-      if (!manifest) throw new Error("store not initialised before App mount");
+      if (!sky.manifest) throw new Error("store not initialised before App mount");
       const pixelReadback = new URLSearchParams(location.search).has("test");
-      created = await createGlobe(globeEl, manifest, { pixelReadback });
+      created = await createGlobe(globeEl, { pixelReadback });
       if (disposed) {
         created.destroy();
         return;
       }
-      created.onFrame((f) => {
+      globe = created;
+      // Subscriptions live on the façade, not on the session, so they survive
+      // every event switch and are registered exactly once.
+      removeFrame = created.onFrame((f) => {
         sky.frame = f;
       });
       removeAnchor = created.onAnchor((a) => {
         anchor = a;
       });
-      // The arrival (§8.1): the planet is already slowly turning. First user
-      // interaction of any kind stops it for good — motion is the loading
-      // state, not a screensaver. No spin under prefers-reduced-motion
-      // (setIdleSpin is gated through motionOk in flight.ts).
-      created.setIdleSpin(true);
-      for (const type of spinStopEvents) {
-        window.addEventListener(type, stopSpin, { once: true, passive: true });
-      }
-      api = created;
-      // Test hook: the smoke test drives the app through the same store the UI uses.
+
+      // Test hook: the smoke test drives the app through the same store the UI
+      // uses. Getters throughout — a switch changes frame count, variables and
+      // hero availability, and a snapshot taken at mount would lie afterwards.
       (window as unknown as Record<string, unknown>).__latentSky = {
-        ready: true,
-        frameCount: created.frameCount,
-        variables: [...sky.variables],
+        get ready(): boolean {
+          return api !== null;
+        },
+        get frameCount(): number {
+          return globe?.frameCount ?? 0;
+        },
+        get variables(): Variable[] {
+          return [...sky.variables];
+        },
+        get heroAvailable(): boolean {
+          return sky.heroAvailable;
+        },
+        get switching(): boolean {
+          return sky.switching;
+        },
+        get activeEventId(): string | null {
+          return sky.activeEventId;
+        },
+        get events(): { id: string; title: string; subtitle: string | null }[] {
+          return sky.events.map((e) => ({
+            id: e.id,
+            title: e.title,
+            subtitle: e.subtitle ?? null,
+          }));
+        },
+        switchEvent: (id: string) => selectEvent(id),
         setFrame: (f: number) => {
           sky.playing = false;
           sky.frame = f;
-          created!.setFrame(f);
+          globe?.setFrame(f);
         },
         setVariable: (v: Variable) => {
           sky.variable = v;
@@ -114,8 +189,21 @@
           heroOverlayVisible = visible;
         },
         getView: () => ({ view: sky.view, flying: sky.flying, split: sky.split }),
-        requestRender: () => created!.requestRender(),
+        requestRender: () => globe?.requestRender(),
       };
+
+      await activate();
+
+      // The arrival (§8.1): the planet is already slowly turning. First user
+      // interaction of any kind stops it for good — motion is the loading
+      // state, not a screensaver. No spin under prefers-reduced-motion
+      // (setIdleSpin is gated through motionOk in flight.ts). Deliberately NOT
+      // restarted after an event switch: choosing an event IS taking the
+      // controls, and these listeners have already fired by then.
+      created.setIdleSpin(true);
+      for (const type of spinStopEvents) {
+        window.addEventListener(type, stopSpin, { once: true, passive: true });
+      }
     })().catch((err: unknown) => {
       bootError = err instanceof Error ? (err.stack ?? err.message) : String(err);
       throw err; // surface loudly — the on-screen panel is not a substitute
@@ -124,7 +212,9 @@
       disposed = true;
       for (const type of spinStopEvents) window.removeEventListener(type, stopSpin);
       removeAnchor?.();
+      removeFrame?.();
       created?.destroy();
+      globe = null;
       api = null;
     };
   });
@@ -153,8 +243,12 @@
     api?.setReveal(sky.revealEngaged);
   });
 
+  // Hero chrome keys off the LOADED MANIFEST's layers (sky.heroAvailable), not
+  // the catalogue's hasHero hint and not a snapshot taken at mount — a switch
+  // must make the invitation appear or disappear on the strength of the data
+  // that is actually on the globe.
   const inviteVisible = $derived(
-    api !== null && api.heroAvailable && heroOverlayVisible && sky.view === "orbit" && !sky.flying,
+    api !== null && sky.heroAvailable && heroOverlayVisible && sky.view === "orbit" && !sky.flying,
   );
   const inviteAnchored = $derived(inviteVisible && anchor !== null && anchor.visible);
 
@@ -163,7 +257,7 @@
   // run. Built-in copy — the schema's run object is closed
   // (additionalProperties: false) and no existing field carries this; revisit
   // if the schema ever grows a pre-forecast note.
-  const comingVisible = $derived(api !== null && !api.heroAvailable && heroOverlayVisible);
+  const comingVisible = $derived(api !== null && !sky.heroAvailable && heroOverlayVisible);
 </script>
 
 <svelte:window onkeydown={onWindowKeydown} />
@@ -173,15 +267,25 @@
     <div class="globe" bind:this={globeEl}></div>
     <RevealSlider />
 
+    <!-- The masthead carries the wordmark and, when the catalogue offers a
+         choice, the event switcher. The switcher sits on the wordmark's line so
+         the masthead's height is unchanged whether or not it renders — the
+         "Return to orbit" button docks directly beneath it. -->
     <header class="masthead">
-      <h1>Latent Sky</h1>
-      <p class="runid">{sky.manifest?.run.id}</p>
+      <div class="masthead-row">
+        <h1>Latent Sky</h1>
+        <EventSwitcher onselect={selectEvent} />
+      </div>
+      <p class="runid">{sky.switching ? "loading…" : sky.manifest?.run.id}</p>
     </header>
 
     <!-- One clean top-right stack: variable pills, then the reveal toggle,
          then the legend — right-aligned with one consistent gap, so nothing
          in this corner can collide or clip at common widths. -->
-    <div class="corner-stack">
+    <div
+      class="corner-stack"
+      style:--masthead-reserve={sky.showSwitcher ? "420px" : "220px"}
+    >
       <VariablePicker />
       <Legend />
     </div>
@@ -224,11 +328,19 @@
          always present in both stable views, pinned to the hero rectangle. -->
     <PlaceLabel
       {anchor}
-      visible={api !== null && api.heroAvailable && heroOverlayVisible}
+      visible={api !== null && sky.heroAvailable && heroOverlayVisible}
     />
 
     {#if sky.view === "hero" && !sky.flying}
-      <button class="return" onclick={returnToOrbit} title="Esc">
+      <!-- Docks under the masthead. The switcher sits on the wordmark's line
+           and makes that block 6px taller, so the offset follows it rather
+           than being a constant that silently starts colliding. -->
+      <button
+        class="return"
+        style:top={sky.showSwitcher ? "70px" : undefined}
+        onclick={returnToOrbit}
+        title="Esc"
+      >
         <svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true">
           <circle cx="7" cy="7" r="5.4" fill="none" stroke="currentColor" stroke-width="1.3" />
           <ellipse cx="7" cy="7" rx="9" ry="3.2" fill="none" stroke="currentColor" stroke-width="1"
@@ -274,6 +386,15 @@
     pointer-events: none;
   }
 
+  /* One row: wordmark, then the event switcher when the catalogue holds more
+     than one event. The switcher renders nothing at all otherwise, and the row
+     collapses to exactly the wordmark it always was. */
+  .masthead-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
   /* Title treatment: letterspaced, quiet — an instrument's nameplate, not a
      billboard. The wordmark carries the piece's only gradient. */
   .masthead h1 {
@@ -303,8 +424,12 @@
     align-items: flex-end;
     gap: 10px;
     /* Never intrude on the masthead at 1024-class widths: cap the stack's
-       width and let the picker wrap its pills instead of overlapping. */
-    max-width: min(420px, calc(100vw - 220px));
+       width and let the picker wrap its pills instead of overlapping. The
+       reserve is set inline, because the masthead is wider when the event
+       switcher renders — 220px for the wordmark alone, 420px with the pill. */
+    /* Floored at the legend's own 256px so a bigger reserve can never squeeze
+       the stack narrower than the one element inside it that cannot shrink. */
+    max-width: min(420px, max(256px, calc(100vw - var(--masthead-reserve, 220px))));
   }
 
   /* ——— the invitation ——— */

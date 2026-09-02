@@ -2,6 +2,7 @@
   import { onDestroy } from "svelte";
   import { sky } from "../state/store.svelte";
   import { motionOk } from "../motion";
+  import type { LayerDef } from "../data/manifest";
 
   let wrapEl = $state<HTMLDivElement | null>(null);
   let sweeping = $state(false);
@@ -10,11 +11,29 @@
   // Divider-pinned labels — the comparison must explain itself at the curtain
   // (first-viewer test, Architecture.md §6.3). Wording is honest per run kind:
   // in the dev sample the sharp side is real CWA/WRF analysis, NOT AI output.
-  const coarsePill = "≈ 25 km · model input";
+  // Resolutions come from the manifest, never from a literal: the pills once
+  // hardcoded "2 km" and stated the wrong number the day a 3 km model shipped.
+  // No nativeKm means say nothing rather than guess.
+  //
+  // The pills describe the ACTIVE pair. The right side is the hero layer for
+  // the current variable; the left is whatever it is paired with — a coarse
+  // model input, or an observed field (MRMS radar) the forecast is compared
+  // against. Both sit on the left of the wipe; only the wording differs.
+  function km(layer: LayerDef | undefined): string {
+    const v = layer?.nativeKm;
+    if (v === undefined) return "";
+    return `≈ ${v % 1 === 0 ? String(v) : v.toFixed(1)} km · `;
+  }
+
+  const coarsePill = $derived(
+    sky.pairLayer?.kind === "hero-observed"
+      ? `${km(sky.pairLayer)}MRMS observed`
+      : `${km(sky.pairLayer)}model input`,
+  );
   const finePill = $derived(
     sky.manifest?.run.kind === "forecast"
-      ? "≈ 2 km · AI generated"
-      : "≈ 2 km · real analysis — dev stand-in",
+      ? `${km(sky.activeLayer)}AI generated`
+      : `${km(sky.activeLayer)}real analysis — dev stand-in`,
   );
 
   // Fade a pill out as its side collapses to a sliver it no longer describes.
@@ -56,14 +75,25 @@
 
   onDestroy(stopSweep);
 
+  /** The exact condition under which this overlay — and the sweep — may exist. */
+  const revealLive = $derived(sky.hasPair && sky.showFine && sky.revealEngaged);
+
   // Arrival at the hero (§8.4): run ONE auto-sweep, then settle mid. The flag
   // is set by App when the fly-down completes; under prefers-reduced-motion
   // startSweep is already a jump cut to the static mid-wipe.
   $effect(() => {
-    if (sky.sweepPending && sky.hasPair && sky.showFine && sky.revealEngaged) {
+    if (sky.sweepPending && revealLive) {
       sky.sweepPending = false;
       startSweep();
     }
+  });
+
+  // The component itself is never unmounted — only its markup is conditional —
+  // so onDestroy does not fire when the reveal goes away (returning to orbit,
+  // or switching event mid-sweep). Without this, a running sweep keeps driving
+  // sky.split for up to five seconds into the next event.
+  $effect(() => {
+    if (!revealLive && sweeping) stopSweep();
   });
 
   function dragTo(clientX: number): void {
@@ -85,7 +115,7 @@
   }
 </script>
 
-{#if sky.hasPair && sky.showFine && sky.revealEngaged}
+{#if revealLive}
   <div class="reveal-overlay" bind:this={wrapEl}>
     <span
       class="pill coarse"
@@ -126,7 +156,7 @@
             stopSweep();
             sky.split = Number(event.currentTarget.value);
           }}
-          aria-valuetext={`${Math.round(sky.split * 100)}% coarse, ${Math.round((1 - sky.split) * 100)}% generated`}
+          aria-valuetext={`${Math.round(sky.split * 100)}% ${sky.pairLayer?.kind === "hero-observed" ? "observed" : "coarse"}, ${Math.round((1 - sky.split) * 100)}% generated`}
         />
       </label>
       <button class="sweep" onclick={() => (sweeping ? stopSweep() : startSweep())}>

@@ -181,7 +181,9 @@ export function buildVariableLayers(
   if (fineDef?.pairWith !== undefined) {
     const candidate = manifest.layers.get(fineDef.pairWith);
     if (!candidate) throw new Error(`layer ${fineDef.id} pairWith ${fineDef.pairWith} does not exist`);
-    if (candidate.kind === "hero-coarse") coarseDef = candidate;
+    // The left side of the wipe: a coarse model input, or an observed field
+    // (MRMS radar) the forecast is compared against. Same slot, same split.
+    if (candidate.kind === "hero-coarse" || candidate.kind === "hero-observed") coarseDef = candidate;
   }
 
   // §7.2(b), re-asserted at load: every layer of this variable MUST share one

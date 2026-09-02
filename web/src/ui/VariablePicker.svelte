@@ -6,6 +6,11 @@
     wind10m: "Wind",
     t2m: "Temperature",
     mrr: "Reflectivity",
+    // Same word as mrr on purpose: to a viewer both are radar reflectivity. They
+    // are separate variables only because their value ranges differ (mrr 0-55 dBZ
+    // from CWB samples, refc 0-75 dBZ for US supercells), and §7.2b fixes a
+    // variable's range globally and forever.
+    refc: "Reflectivity",
     tcwv: "Water vapour",
     msl: "Pressure",
   };

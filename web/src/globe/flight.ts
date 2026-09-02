@@ -52,6 +52,14 @@ const ORBIT_HEIGHT = 17_500_000;
  * ~2 km generated layer IS the zoom reward.
  */
 const HERO_FREE_MIN_ZOOM = 8_000_000;
+/**
+ * Cesium's own ScreenSpaceCameraController default (measured: 1 m, in the
+ * 1.143.0 build). Named and applied explicitly rather than left alone, because
+ * a director is now built per event: switching from a hero-free event to a
+ * hero-bearing one must LIFT the presentation floor, and a floor that is only
+ * ever raised is exactly the kind of stale state an event switch leaks.
+ */
+const DEFAULT_MIN_ZOOM = 1;
 /** Idle spin rate, radians per second (≈ 0.4°/s — perceptible, calm). */
 const SPIN_RATE = 0.4 * (Math.PI / 180);
 /** Fly-down duration, seconds (§8.4 asks for ~4–5 s with gentle easing). */
@@ -88,6 +96,8 @@ export class CameraDirector {
   private spinRaf = 0;
   private keepAliveRaf = 0;
   private destroyed = false;
+  /** Every postRender listener this director registered — all removed on destroy. */
+  private readonly anchorRemovers = new Set<() => void>();
 
   /**
    * @param heroRectDegrees [west, south, east, north] of the hero-fine layer,
@@ -114,6 +124,10 @@ export class CameraDirector {
         (south + north) / 2,
         ORBIT_HEIGHT,
       );
+      // A shipped hero pair keeps Cesium's default freedom — the ~2 km
+      // generated layer IS the zoom reward. Written explicitly so switching
+      // away from a hero-free event restores it (see DEFAULT_MIN_ZOOM).
+      this.widget.scene.screenSpaceCameraController.minimumZoomDistance = DEFAULT_MIN_ZOOM;
     } else {
       this.heroRect = null;
       this.heroCentre = null;
@@ -235,7 +249,7 @@ export class CameraDirector {
    */
   onAnchor(callback: (anchor: HeroAnchor | null) => void): () => void {
     const { scene, camera } = this.widget;
-    return scene.postRender.addEventListener(() => {
+    const remove = scene.postRender.addEventListener(() => {
       if (!this.heroCentre) {
         callback(null);
         return;
@@ -268,11 +282,28 @@ export class CameraDirector {
       }
       callback({ x: win.x, y: win.y, visible: true, top });
     });
+    const detach = (): void => {
+      if (!this.anchorRemovers.delete(detach)) return;
+      remove();
+    };
+    this.anchorRemovers.add(detach);
+    return detach;
   }
 
+  /**
+   * Tear the director down completely. A director lives for exactly one event,
+   * so this must leave NOTHING of it attached to the shared widget: no rAF
+   * loop, no postRender listener, and no camera tween still flying towards the
+   * previous event's hero rectangle while the next event sets its orbit view.
+   */
   destroy(): void {
     this.destroyed = true;
     this.stopIdleSpin();
     this.stopKeepAlive();
+    // Cancel before dropping listeners: a live flight advances the camera
+    // inside Scene.render and would fight the next session's setOrbitView().
+    this.widget.camera.cancelFlight();
+    for (const remove of [...this.anchorRemovers]) remove();
+    this.anchorRemovers.clear();
   }
 }
