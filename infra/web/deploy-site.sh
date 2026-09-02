@@ -153,32 +153,64 @@ cp -R "$DATA_SRC" "$DIST/data/web"
 python - "$DIST/data/web" <<'PYGUARD'
 import json, pathlib, sys
 root = pathlib.Path(sys.argv[1]).resolve()
-m = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
-refs = []
-for lid, layer in m["layers"].items():
-    refs.extend(layer["frames"])
-    refs.append(layer["lut"])
-basemap = m.get("basemap") or {}
-for key in ("global", "hero"):
-    if basemap.get(key):
-        refs.append(basemap[key])
-problems = []
-for ref in refs:
-    p = (root / ref).resolve()
-    if root not in p.parents:
-        problems.append(f"{ref}: escapes data/web")
-    elif not p.is_file():
-        problems.append(f"{ref}: referenced file missing")
-blob = json.dumps(m).lower()
-for telltale in ("cwb", "data/dev"):
-    if telltale in blob:
-        problems.append(f"manifest contains {telltale!r} — CC BY-NC-ND-derived dev data must never deploy")
+
+# Audit EVERY manifest the site can load, not just the root one. Since the
+# multi-event catalogue landed, most of the payload lives in event subtrees
+# (data/web/taiwan/...), and a guard reading only manifest.json would wave all
+# of it through unexamined — the opposite of what a tripwire is for. Paths in
+# each manifest resolve against ITS OWN directory, exactly as the browser
+# resolves them against the manifest URL.
+targets = [pathlib.Path("manifest.json")]
+catalogue = root / "catalogue.json"
+if catalogue.is_file():
+    for event in json.loads(catalogue.read_text(encoding="utf-8")).get("events", []):
+        rel = pathlib.Path(event["manifest"])
+        if rel not in targets:
+            targets.append(rel)
+
+problems, summary = [], []
+for rel in targets:
+    mp = (root / rel).resolve()
+    if not mp.is_relative_to(root):
+        problems.append(f"{rel}: manifest path escapes data/web")
+        continue
+    if not mp.is_file():
+        problems.append(f"{rel}: manifest referenced by the catalogue does not exist")
+        continue
+    m = json.loads(mp.read_text(encoding="utf-8"))
+    base = mp.parent
+    refs = []
+    for layer in m["layers"].values():
+        refs.extend(layer["frames"])
+        refs.append(layer["lut"])
+    basemap = m.get("basemap") or {}
+    for key in ("global", "hero"):
+        if basemap.get(key):
+            refs.append(basemap[key])
+    for ref in refs:
+        p = (base / ref).resolve()
+        if not p.is_relative_to(root):
+            problems.append(f"{rel} -> {ref}: escapes data/web")
+        elif not p.is_file():
+            problems.append(f"{rel} -> {ref}: referenced file missing")
+    blob = json.dumps(m).lower()
+    for telltale in ("cwb", "data/dev"):
+        if telltale in blob:
+            problems.append(
+                f"{rel} contains {telltale!r} — CC BY-NC-ND-derived dev data must never deploy"
+            )
+    summary.append(
+        f"  {str(rel):28} run.id={m['run']['id']} kind={m['run']['kind']} "
+        f"layers={len(m['layers'])} frames={len(m['frames'])} refs={len(refs)}"
+    )
+
 if problems:
     for p in problems:
         print(f"REFUSING (licence/integrity guard): {p}")
     sys.exit(1)
-print(f"manifest OK: run.id={m['run']['id']} kind={m['run']['kind']} "
-      f"layers={len(m['layers'])} frames={len(m['frames'])} refs={len(refs)}")
+print(f"manifests OK ({len(targets)} audited):")
+for line in summary:
+    print(line)
 PYGUARD
 
 # Every file to be uploaded must have a mapped Content-Type — audit BEFORE any mutation.
@@ -363,20 +395,53 @@ for f in "$DIST"/*; do
     --content-type "$ctype" --cache-control "$ROOT_CC" --only-show-errors
 done
 
-say "── upload: no-cache entry points (last, so their metadata wins)"
+# The entry points are index.html, the catalogue, and EVERY manifest the catalogue
+# indexes. All are re-read on load and all change when the pipeline re-runs, so none
+# may keep the immutable /data/* caching applied above — a catalogue frozen for a
+# year would hide every event added after this deploy.
+mapfile -t ENTRY_RELS < <(python - "$DIST/data/web" <<'PYENTRY'
+import json, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+rels = []
+if (root / "catalogue.json").is_file():
+    rels.append("catalogue.json")
+rels.append("manifest.json")
+cat = root / "catalogue.json"
+if cat.is_file():
+    for event in json.loads(cat.read_text(encoding="utf-8")).get("events", []):
+        if event["manifest"] not in rels:
+            rels.append(event["manifest"])
+for rel in rels:
+    print(rel)
+PYENTRY
+)
+# Python on Windows writes CRLF, so every element would carry a trailing \r and
+# fail the -f test below (caught by that test on the first dry-run, 27 Aug 2026).
+# The pattern MUST come from a variable: $'\r' is ANSI-C quoting, which bash does
+# not perform inside the double quotes of "${arr[@]%...}" — written inline it
+# strips the literal characters $'\r' and silently changes nothing.
+CR=$'\r'
+ENTRY_RELS=("${ENTRY_RELS[@]%$CR}")
+
+say "── upload: no-cache entry points (last, so their metadata wins): index.html ${ENTRY_RELS[*]}"
 aws_mutate s3 cp "$DIST/index.html" "s3://$SITE_BUCKET/index.html" --region "$REGION" \
   --content-type "text/html" --cache-control "$NOCACHE_CC" --only-show-errors
-aws_mutate s3 cp "$DIST/data/web/manifest.json" "s3://$SITE_BUCKET/data/web/manifest.json" \
-  --region "$REGION" \
-  --content-type "application/json" --cache-control "$NOCACHE_CC" --only-show-errors
+for rel in "${ENTRY_RELS[@]}"; do
+  [[ -f "$DIST/data/web/$rel" ]] || { say "REFUSING: entry point $rel missing from the staged tree"; exit 1; }
+  aws_mutate s3 cp "$DIST/data/web/$rel" "s3://$SITE_BUCKET/data/web/$rel" \
+    --region "$REGION" \
+    --content-type "application/json" --cache-control "$NOCACHE_CC" --only-show-errors
+done
 
-# ── 7. Invalidation — the two entry points ONLY, never /* ──────────────────────
-say "── invalidation: /index.html /data/web/manifest.json"
+# ── 7. Invalidation — the entry points ONLY, never /* ──────────────────────────
+INVAL_PATHS=("/index.html")
+for rel in "${ENTRY_RELS[@]}"; do INVAL_PATHS+=("/data/web/$rel"); done
+say "── invalidation: ${INVAL_PATHS[*]}"
 # MSYS_NO_PATHCONV: Git Bash rewrites leading-slash args into Windows paths for
 # native exes — "/index.html" reached CloudFront as "C:/Program Files/Git/index.html"
 # and the API refused it (verified failure, 23 Aug 2026).
 INVALIDATION_ID=$(MSYS_NO_PATHCONV=1 aws_mutate cloudfront create-invalidation --distribution-id "$DIST_ID" \
-  --paths "/index.html" "/data/web/manifest.json" \
+  --paths "${INVAL_PATHS[@]}" \
   --query "Invalidation.Id" --output text)
 if [[ -z "$INVALIDATION_ID" ]]; then
   (( DRY_RUN )) || { say "FATAL: create-invalidation returned no id"; exit 1; }
