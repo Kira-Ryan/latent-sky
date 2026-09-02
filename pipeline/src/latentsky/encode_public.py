@@ -6,6 +6,7 @@ This is the pre-forecast public subset ONLY (Architecture.md §11, §12):
   * the dark basemap               Natural Earth II + 110m coastlines, public domain
   * the LUT PNGs                   baked from MIT colour maps
   * manifest.json                  run.kind "dev-sample", NO hero layers
+  * catalogue.json                 the one-entry event index the app loads first
 
 v2 — a REAL weather sequence (live-site feedback: five unrelated monthly
 snapshots made play/scrub read as meaningless morphing). The raw cache is the
@@ -68,6 +69,7 @@ import numpy as np
 
 from . import basemap as basemap_mod
 from . import budget
+from . import catalogue as catalogue_mod
 from .encode import LayerRecord, encode_frame, load_lut, make_layer_record
 from .encode_global import BASEMAP_REL, GLOBAL_GRID, roll_to_180, tree_sha256
 from .fetch_era5 import HALF_SHAPE, times_from_range
@@ -83,7 +85,13 @@ PUBLISHABLE_KINDS = frozenset({"global"})
 
 # Everything encode_public owns inside --out. Replaced wholesale each run;
 # anything else present is a loud error, never silently kept or deleted.
-MANAGED_ENTRIES = ("layers", "luts", "basemap", "manifest.json")
+# catalogue.json is managed here so this tool's output tree is a working
+# deployable on its own — the site loads the catalogue FIRST, so emitting a
+# manifest without one would leave data/web unloadable between build steps.
+# A MULTI-event catalogue is a separate step over the full registry
+# (python -m latentsky.catalogue --root data/web), which overwrites this file
+# once a second manifest exists; this tool only ever describes its own.
+MANAGED_ENTRIES = ("layers", "luts", "basemap", "manifest.json", "catalogue.json")
 
 # The Gaemi-week sequence — §3.6-gated final ERA5 (>3 months old, ARCO).
 RAW_NAME = "era5_gaemi_week.npz"
@@ -263,11 +271,39 @@ def public_specs(specs: dict[str, RampSpec]) -> dict[str, RampSpec]:
 
 # ------------------------------------------------------------------ output directory
 
-def prepare_out_dir(out_dir: pathlib.Path) -> None:
+def registered_event_dirs(
+    config_path: pathlib.Path = catalogue_mod.DEFAULT_CONFIG,
+) -> frozenset[str]:
+    """Top-level directory names that belong to OTHER events, per the registry.
+
+    This tool owns the root-level global event. A per-event encoder owns a
+    subtree (`taiwan/manifest.json` -> `taiwan/`), and those subtrees must
+    survive a global re-encode rather than being reported as strangers.
+
+    Deriving the allowlist from configs/catalogue.yaml rather than hardcoding it
+    keeps the refusal meaningful: an unregistered directory is still a loud
+    error, so a typo or a stale experiment cannot quietly ride along in the
+    deployed tree and make the whole-tree sha256 a lie.
+    """
+    heads = set()
+    for spec in catalogue_mod.load_registry(config_path):
+        head = spec.manifest.split("/")[0]
+        if not head.endswith(".json"):
+            heads.add(head)
+    return frozenset(heads)
+
+
+def prepare_out_dir(
+    out_dir: pathlib.Path, foreign: frozenset[str] = frozenset()
+) -> None:
     """Replace the managed entries wholesale; refuse anything this tool does not own.
 
     A stray file would make the whole-tree sha256 lie about what a re-run
     produces, so it is a loud error rather than a silent keep or delete.
+
+    `foreign` names subtrees owned by other events (see registered_event_dirs).
+    They are neither deleted nor reported — but they are not touched either, so
+    the hash this tool returns still covers only what it wrote.
     """
     out_dir = pathlib.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -277,12 +313,13 @@ def prepare_out_dir(out_dir: pathlib.Path) -> None:
             shutil.rmtree(path)
         elif path.exists():
             path.unlink()
-    strangers = sorted(p.name for p in out_dir.iterdir())
+    strangers = sorted(p.name for p in out_dir.iterdir() if p.name not in foreign)
     if strangers:
         raise EncodePublicError(
             f"{out_dir} contains entries this tool does not manage: {strangers}. "
-            "data/web is wholly owned by encode_public — delete them (or move them "
-            "out) so the emitted tree hash means what it claims."
+            "data/web is owned by encode_public except for event subtrees named in "
+            f"configs/catalogue.yaml (currently {sorted(foreign) or 'none'}) — delete "
+            "them (or register them) so the emitted tree hash means what it claims."
         )
 
 
@@ -339,6 +376,7 @@ def encode_layers(
     tiles_dir: pathlib.Path = basemap_mod.DEFAULT_TILES,
     dev_encoded_dir: pathlib.Path = DEV_ENCODED_DIR,
     coastline_path: pathlib.Path = basemap_mod.DEFAULT_COASTLINE,
+    catalogue_config: pathlib.Path = catalogue_mod.DEFAULT_CONFIG,
 ) -> str:
     """Encode the publishable subset. Returns the whole-tree sha256 of --out."""
     t0 = time.perf_counter()
@@ -359,7 +397,7 @@ def encode_layers(
     check_half_grid(lat, lon)
 
     specs = public_specs(load_ramps(config))
-    prepare_out_dir(out_dir)
+    prepare_out_dir(out_dir, registered_event_dirs(catalogue_config))
 
     # Vendor the LUTs the global layers use so the tree is self-contained.
     (out_dir / "luts").mkdir()
@@ -437,6 +475,16 @@ def encode_layers(
     print(f"\npublic manifest validated against schema and written: {written}")
     print(f"  layers: {len(records)} global, 0 hero | frames: {len(PUBLIC_TIMES)} "
           f"(12-hourly from a {len(times)}-step 6-hourly cache) | basemap: {BASEMAP_REL}")
+
+    # The catalogue the app loads FIRST — one entry, this manifest, forced default.
+    # kind/hasHero are derived by reading back the manifest just written, so the
+    # single-event catalogue cannot claim a hero this tool is forbidden to emit.
+    cat_specs = catalogue_mod.load_registry(catalogue_config)
+    cat_path = catalogue_mod.emit(catalogue_mod.single_event(cat_specs, RUN["id"]), out_dir)
+    entry = json.loads(cat_path.read_text(encoding="utf-8"))["events"][0]
+    print(f"catalogue validated against schema and written: {cat_path}")
+    print(f"  1 event: {entry['id']} ({entry['region']}, {entry['kind']}) -> {entry['manifest']}"
+          f"  [default]")
 
     # LICENCE GATE 2 — the emitted tree against the local dev hero frames.
     compared = verify_no_hero_bytes(out_dir, dev_encoded_dir)

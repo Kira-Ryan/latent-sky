@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "events": [
+    {
+      "id": "synthetic-hero",
+      "title": "Synthetic vortex (hero pair)",
+      "subtitle": "Analytic fine + coarse layers, 16 frames",
+      "manifest": "manifest.json",
+      "kind": "hero",
+      "region": "taiwan",
+      "hasHero": true,
+      "default": true
+    },
+    {
+      "id": "synthetic-global",
+      "title": "Synthetic global reanalysis",
+      "subtitle": "Global layers only, 11 frames, pre-forecast state",
+      "manifest": "manifest-hero-free.json",
+      "kind": "global-only",
+      "region": "global",
+      "hasHero": false,
+      "default": false
+    }
+  ]
+}

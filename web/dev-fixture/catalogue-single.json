@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "events": [
+    {
+      "id": "synthetic-global",
+      "title": "Synthetic global reanalysis",
+      "subtitle": "Global layers only, 11 frames, pre-forecast state",
+      "manifest": "manifest-hero-free.json",
+      "kind": "global-only",
+      "region": "global",
+      "hasHero": false,
+      "default": true
+    }
+  ]
+}

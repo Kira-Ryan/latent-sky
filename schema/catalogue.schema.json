@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://latent-sky.dev/schema/catalogue.schema.json",
+  "title": "Latent Sky event catalogue",
+  "description": "The top-level index the web app loads FIRST, before any manifest. It answers one question — which events exist and which one opens by default — and nothing else. Every heavier fact (frames, layers, ranges, identity) stays in manifest.schema.json, which this file deliberately does not duplicate or summarise beyond the single `hasHero`/`kind` capability bit the switcher needs to label an entry before fetching it.\n\nProducer: pipeline/src/latentsky/catalogue.py, which DERIVES kind/hasHero by inspecting each referenced manifest — never by being told. Consumer: web/, which fetches /data/web/catalogue.json, resolves the chosen entry's `manifest` against the catalogue URL, and then loads it exactly as it does today.\n\nAdding an event is a data change: append an entry, move `default`. The two planned heroes are already expressible — Taiwan (SFNO -> CorrDiffTaiwan) and the March 2025 US tornado outbreak (StormCast, region `conus`).",
+  "type": "object",
+  "required": ["schemaVersion", "events"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1,
+      "description": "Independent of the manifest's schemaVersion. The app must be able to read the catalogue even if it then rejects a manifest version it does not know."
+    },
+    "events": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Display order IS array order — the switcher renders top to bottom as given, so the pipeline controls sequencing without the app sorting on anything. A one-entry catalogue is valid and is the pre-hero state: the app must degrade to no switcher at all rather than showing a control with one option.",
+      "contains": {
+        "type": "object",
+        "required": ["default"],
+        "properties": { "default": { "const": true } }
+      },
+      "minContains": 1,
+      "maxContains": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "subtitle",
+          "manifest",
+          "kind",
+          "region",
+          "hasHero",
+          "default"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "maxLength": 64,
+            "description": "Stable kebab-case identity, unique across the catalogue (uniqueness is gated by the builder — JSON Schema cannot express it). Suitable for a ?event= URL parameter and for persisting a viewer's choice. Conventionally equal to the referenced manifest's run.id, but not required to be: the catalogue is display metadata and the manifest is the data contract."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "The switcher's primary line, e.g. \"Global — Typhoon Gaemi week\"."
+          },
+          "subtitle": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "One honest line naming what the data actually is, e.g. \"ERA5 reanalysis, 0.5°\". Not marketing: this is where the scientific-honesty posture of §13 starts, before the viewer has loaded anything."
+          },
+          "manifest": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*\\.json$",
+            "maxLength": 256,
+            "description": "Path to the event's manifest, relative to THIS file — resolve with new URL(manifest, catalogueUrl). The pattern forbids absolute paths, protocol-relative paths, drive letters and \"..\" segments (every segment must start alphanumeric), so a catalogue can never point the app outside its own data tree."
+          },
+          "kind": {
+            "enum": ["global-only", "hero"],
+            "description": "What the event can show. \"hero\" means the manifest carries at least one hero-fine layer, so the coarse/fine reveal exists; \"global-only\" means it does not and the app must not offer a reveal affordance. DERIVED from the manifest by the pipeline."
+          },
+          "region": {
+            "enum": ["global", "taiwan", "conus"],
+            "description": "Grouping and labelling key for the switcher — not a bounding box (the manifest's layer rects are authoritative for geometry). The enum is closed on purpose so a typo cannot silently create an ungrouped event; all three planned events are already covered."
+          },
+          "hasHero": {
+            "type": "boolean",
+            "description": "The capability bit the UI branches on, locked equal to kind by the if/then rules below. Redundant with kind by design — kind names the event, hasHero is the boolean a component reads — and the schema makes the redundancy unable to become an inconsistency. DERIVED from the manifest by the pipeline."
+          },
+          "default": {
+            "type": "boolean",
+            "description": "The event that opens when no choice is expressed. Exactly one entry in the array must be true — enforced here by minContains/maxContains as well as in the builder, because a hand-edited catalogue reaches the browser without the builder."
+          }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "kind": { "const": "hero" } }, "required": ["kind"] },
+            "then": { "properties": { "hasHero": { "const": true } } }
+          },
+          {
+            "if": { "properties": { "kind": { "const": "global-only" } }, "required": ["kind"] },
+            "then": { "properties": { "hasHero": { "const": false } } }
+          }
+        ]
+      }
+    }
+  }
+}

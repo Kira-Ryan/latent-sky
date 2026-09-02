@@ -13,10 +13,20 @@ Produces, per Architecture.md sections 5.5, 7.1 and 7.2:
   basemap/global-dark.webp tiny dark synthetic full-globe basemap (manifest
                            "basemap" object — exercises the basemap plumbing)
   manifest.json            conforming to schema/manifest.schema.json
-  manifest-hero-free.json  the same run with ONLY the kind:"global" layers and
-                           no run hints (stormName/heroFrame/placeLabel) — the
-                           public pre-forecast state the site first deploys in.
-                           Shares frames/, luts/ and basemap/ with manifest.json.
+  manifest-hero-free.json  the same run with ONLY the kind:"global" layers, no
+                           run hints (stormName/heroFrame/placeLabel) and a
+                           SHORTER frame list — the public pre-forecast state
+                           the site first deploys in. Shares frames/, luts/ and
+                           basemap/ with manifest.json.
+  catalogue.json           TWO-event catalogue over both manifests — the event
+                           switcher's fixture. Hero-bearing entry is default.
+  catalogue-single.json    ONE-event catalogue — the state the site deploys in
+                           today, where the switcher must hide entirely.
+
+The two manifests deliberately differ in frame count (16 hero-bearing vs 11
+hero-free, mirroring Architecture.md section 8's 6-hourly hero against 12-hourly
+global cadence). That is what makes an event switch testable: a clock or a
+scrubber that survived the switch would still span the old event's frames.
 
 Round-trip bit-identity of every WebP is asserted (encode -> decode -> compare),
 which proves lossless=True + exact=True on the installed Pillow.
@@ -26,6 +36,7 @@ Run:  python dev-fixture/generate.py   (from web/)
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import sys
@@ -40,6 +51,8 @@ LUTS = HERE / "luts"
 FRAMES = HERE / "frames"
 BASEMAP = HERE / "basemap"
 SCHEMA = HERE.parent.parent / "schema" / "manifest.schema.json"
+# Authored by the catalogue work in parallel with this file; validated when present.
+CATALOGUE_SCHEMA = HERE.parent.parent / "schema" / "catalogue.schema.json"
 
 # Measured CorrDiffTaiwan output extent, Architecture.md section 3.4 (public numbers).
 RECT = [116.1372, 19.5187, 125.5459, 27.9282]  # west, south, east, north
@@ -57,6 +70,13 @@ FRAME_TIMES = [
     (datetime(2026, 1, 1) + timedelta(hours=12 * i)).strftime("%Y-%m-%dT%H:%M:%SZ")
     for i in range(N_FRAMES)
 ]
+
+# The hero-free variant carries FEWER frames than the hero-bearing one, on
+# purpose. Architecture.md section 8 gives the shipped cadences as 6-hourly x 12
+# for the hero and 12-hourly x 11 for the global layers, so a differing count is
+# the honest shape; it is also the only way an event switch can prove it reset
+# the clock, the timeline and the scrubber rather than inheriting them.
+HERO_FREE_N_FRAMES = 11
 
 FINE = 64
 COARSE = 8
@@ -363,9 +383,12 @@ def main() -> None:
 
     # The hero-free variant — the public pre-forecast state: global layers only,
     # and none of the run hints, because a run with no hero makes no storm claim,
-    # has no arrival frame and names no place. Shares every asset on disk.
-    global_layers = {k: v for k, v in layers.items() if v["kind"] == "global"}
+    # has no arrival frame and names no place. Shares every asset on disk, but
+    # stops at HERO_FREE_N_FRAMES so the two events differ in frame count.
+    global_layers = copy.deepcopy({k: v for k, v in layers.items() if v["kind"] == "global"})
     assert global_layers and all("pairWith" not in v for v in global_layers.values())
+    for layer in global_layers.values():
+        layer["frames"] = layer["frames"][:HERO_FREE_N_FRAMES]
     manifest_hero_free = {
         "schemaVersion": 1,
         "run": {
@@ -378,7 +401,7 @@ def main() -> None:
                 "deployed before the first forecast run."
             ),
         },
-        "frames": FRAME_TIMES,
+        "frames": FRAME_TIMES[:HERO_FREE_N_FRAMES],
         "basemap": {
             "global": "basemap/global-dark.webp",
             "globalRect": GLOBE,
@@ -387,7 +410,48 @@ def main() -> None:
     }
     out_hero_free = HERE / "manifest-hero-free.json"
     out_hero_free.write_text(json.dumps(manifest_hero_free, indent=2) + "\n", encoding="utf-8")
-    print(f"[manifest] {out_hero_free}  ({out_hero_free.stat().st_size} B, {len(global_layers)} global layers)")
+    print(
+        f"[manifest] {out_hero_free}  ({out_hero_free.stat().st_size} B, "
+        f"{len(global_layers)} global layers, {HERO_FREE_N_FRAMES} frames)"
+    )
+
+    # ——— the event catalogue: what the switcher reads ———
+    # Paths are relative to the catalogue, exactly as data/web/catalogue.json's
+    # will be relative to the manifests beside it.
+    # region/kind are the closed enums of schema/catalogue.schema.json, not free
+    # text: the hero layers sit on the real CorrDiffTaiwan extent, so "taiwan" is
+    # the honest grouping key even for an analytic field.
+    hero_event = {
+        "id": "synthetic-hero",
+        "title": "Synthetic vortex (hero pair)",
+        "subtitle": f"Analytic fine + coarse layers, {N_FRAMES} frames",
+        "manifest": "manifest.json",
+        "kind": "hero",
+        "region": "taiwan",
+        "hasHero": True,
+        "default": True,
+    }
+    global_event = {
+        "id": "synthetic-global",
+        "title": "Synthetic global reanalysis",
+        "subtitle": f"Global layers only, {HERO_FREE_N_FRAMES} frames, pre-forecast state",
+        "manifest": "manifest-hero-free.json",
+        "kind": "global-only",
+        "region": "global",
+        "hasHero": False,
+        "default": False,
+    }
+    catalogue = {"schemaVersion": 1, "events": [hero_event, global_event]}
+    # One-event catalogue: the state the site deploys in today, in which the
+    # switcher must render nothing at all rather than a menu of one.
+    catalogue_single = {"schemaVersion": 1, "events": [dict(global_event, default=True)]}
+
+    out_catalogue = HERE / "catalogue.json"
+    out_catalogue.write_text(json.dumps(catalogue, indent=2) + "\n", encoding="utf-8")
+    print(f"[catalogue] {out_catalogue}  ({len(catalogue['events'])} events, default={hero_event['id']})")
+    out_catalogue_single = HERE / "catalogue-single.json"
+    out_catalogue_single.write_text(json.dumps(catalogue_single, indent=2) + "\n", encoding="utf-8")
+    print(f"[catalogue] {out_catalogue_single}  (1 event — the switcher must hide)")
 
     # Formal validation against THE contract, if jsonschema is available.
     try:
@@ -399,6 +463,17 @@ def main() -> None:
     jsonschema.validate(manifest, schema)
     jsonschema.validate(manifest_hero_free, schema)
     print(f"[schema] both manifests validate against {SCHEMA.name} (jsonschema {jsonschema.__version__})")
+
+    # The catalogue schema is authored alongside data/web/catalogue.json. Until
+    # it lands there is nothing to validate against; once it does, a fixture
+    # that drifts from the real contract must fail here rather than in a browser.
+    if CATALOGUE_SCHEMA.exists():
+        cat_schema = json.loads(CATALOGUE_SCHEMA.read_text(encoding="utf-8"))
+        jsonschema.validate(catalogue, cat_schema)
+        jsonschema.validate(catalogue_single, cat_schema)
+        print(f"[schema] both catalogues validate against {CATALOGUE_SCHEMA.name}")
+    else:
+        print(f"[schema] {CATALOGUE_SCHEMA.name} not present yet — catalogue validation SKIPPED")
 
 
 if __name__ == "__main__":

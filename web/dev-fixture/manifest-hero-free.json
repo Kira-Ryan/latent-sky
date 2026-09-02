@@ -20,12 +20,7 @@
     "2026-01-04T12:00:00Z",
     "2026-01-05T00:00:00Z",
     "2026-01-05T12:00:00Z",
-    "2026-01-06T00:00:00Z",
-    "2026-01-06T12:00:00Z",
-    "2026-01-07T00:00:00Z",
-    "2026-01-07T12:00:00Z",
-    "2026-01-08T00:00:00Z",
-    "2026-01-08T12:00:00Z"
+    "2026-01-06T00:00:00Z"
   ],
   "basemap": {
     "global": "basemap/global-dark.webp",
@@ -67,12 +62,7 @@
         "frames/wind10m-global-007.webp",
         "frames/wind10m-global-008.webp",
         "frames/wind10m-global-009.webp",
-        "frames/wind10m-global-010.webp",
-        "frames/wind10m-global-011.webp",
-        "frames/wind10m-global-012.webp",
-        "frames/wind10m-global-013.webp",
-        "frames/wind10m-global-014.webp",
-        "frames/wind10m-global-015.webp"
+        "frames/wind10m-global-010.webp"
       ]
     },
     "tcwv-global": {
@@ -105,12 +95,7 @@
         "frames/tcwv-global-007.webp",
         "frames/tcwv-global-008.webp",
         "frames/tcwv-global-009.webp",
-        "frames/tcwv-global-010.webp",
-        "frames/tcwv-global-011.webp",
-        "frames/tcwv-global-012.webp",
-        "frames/tcwv-global-013.webp",
-        "frames/tcwv-global-014.webp",
-        "frames/tcwv-global-015.webp"
+        "frames/tcwv-global-010.webp"
       ]
     }
   }

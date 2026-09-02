@@ -1,0 +1,51 @@
+# The event catalogue registry — which events the site offers, in display order.
+#
+# Adding an event is a DATA change: append an entry here, encode its manifest into
+# data/web, move `default` if it should open first. schema/catalogue.schema.json
+# does not change — `conus` is already in its region enum for the March 2025 US
+# tornado outbreak (StormCast v1), and `taiwan` for the SFNO -> CorrDiffTaiwan run.
+#
+# `kind` and `hasHero` are DELIBERATELY absent from this file. latentsky.catalogue
+# derives them by inspecting each referenced manifest (any hero-fine layer => a
+# hero event), so this registry cannot claim a reveal the data does not carry.
+#
+#   python -m latentsky.catalogue --root data/web
+#
+# Every entry's manifest must exist under --root at build time; a missing one is a
+# hard failure, never a skipped event. So an entry lands here when its encode does.
+
+events:
+  - id: public-era5-gaemi-week-2024
+    title: "Global — Typhoon Gaemi week"
+    subtitle: "ERA5 reanalysis, 0.5°"
+    manifest: manifest.json
+    region: global
+    default: true
+
+  # The first real forecast runs — SFNO -> CorrDiffTaiwan on a rented A100,
+  # 27 Aug 2026. kind/hasHero are read out of each manifest, not declared here.
+  - id: taiwan-gaemi-2024
+    title: "Taiwan — Typhoon Gaemi"
+    subtitle: "AI forecast · SFNO → CorrDiff, ~2 km generated"
+    manifest: taiwan/manifest.json
+    region: taiwan
+    default: false
+
+  # The US event — NVIDIA StormCast v1, 3 km convection-allowing, on the largest
+  # March tornado outbreak on record. Initialised 18Z 14 Mar, four hours BEFORE the
+  # first tornado report, so the model has to initiate the convection rather than
+  # advance storms it was handed. `conus` was already in the schema's region enum.
+  - id: us-dixie-2025
+    title: "Central US — 14 March 2025 tornado outbreak"
+    subtitle: "AI forecast · StormCast, 3 km convection-allowing"
+    manifest: dixie/manifest.json
+    region: conus
+    default: false
+
+  # The proving run, on the init date NVIDIA ships in its own downscaling example.
+  - id: taiwan-doksuri-2023
+    title: "Taiwan — Typhoon Doksuri"
+    subtitle: "AI forecast · SFNO → CorrDiff, ~2 km generated"
+    manifest: taiwan-doksuri/manifest.json
+    region: taiwan
+    default: false

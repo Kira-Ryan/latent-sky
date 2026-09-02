@@ -124,6 +124,37 @@ def test_prepare_out_dir_rejects_strangers(tmp_path):
         encode_public.prepare_out_dir(out)
 
 
+def test_prepare_out_dir_keeps_registered_event_subtrees(tmp_path):
+    """A per-event subtree survives a global re-encode — untouched, not deleted."""
+    out = tmp_path / "web"
+    (out / "taiwan" / "layers").mkdir(parents=True)
+    (out / "taiwan" / "manifest.json").write_text("{}", encoding="utf-8")
+    encode_public.prepare_out_dir(out, frozenset({"taiwan"}))
+    assert (out / "taiwan" / "manifest.json").read_text(encoding="utf-8") == "{}"
+
+
+def test_prepare_out_dir_rejects_unregistered_event_subtree(tmp_path):
+    """An event directory absent from the registry is still a stranger."""
+    out = tmp_path / "web"
+    (out / "conus").mkdir(parents=True)
+    with pytest.raises(encode_public.EncodePublicError, match="conus"):
+        encode_public.prepare_out_dir(out, frozenset({"taiwan"}))
+
+
+def test_registered_event_dirs_reads_the_registry(tmp_path):
+    """Subtree names come from the catalogue registry; root manifests contribute none."""
+    config = tmp_path / "catalogue.yaml"
+    config.write_text(
+        "events:\n"
+        "  - id: a\n    title: A\n    subtitle: s\n    manifest: manifest.json\n"
+        "    region: global\n    default: true\n"
+        "  - id: b\n    title: B\n    subtitle: s\n    manifest: taiwan/manifest.json\n"
+        "    region: taiwan\n",
+        encoding="utf-8",
+    )
+    assert encode_public.registered_event_dirs(config) == frozenset({"taiwan"})
+
+
 # ------------------------------------------------------------------ synthetic end-to-end
 
 def _synthetic_raw(tmp_path: pathlib.Path, times: list[str] | None = None) -> pathlib.Path:
