@@ -71,16 +71,30 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(f"MRMS frames do not match forecast frames: {obs_times[:2]} vs {fc_times[:2]}")
     print(f"mrms {obs.shape}; radar coverage {np.isfinite(obs[0]).mean()*100:.1f}% of rect; offsets <= {np.abs(offsets).max():.0f}s")
 
-    members = None
+    # The deterministic run is NOT a member: the members are the --member stores
+    # only, so the probability field is what forecast_stormcast.py --members
+    # produced and nothing else. The single run is scored alongside for contrast.
+    members, member_seeds = None, []
     if args.member:
-        stacks = [fc]
+        stacks = []
         for p in args.member:
             h = zarr.open(str(p), mode="r")
+            if not np.array_equal(np.asarray(h["lead_time"]).astype("timedelta64[ns]"), leads):
+                raise SystemExit(f"{p}: lead_time axis differs from the scored run's")
             stacks.append(verify.forecast_on_grid(h, hlat, hlon, grid))
+            member_seeds.append(h.attrs.get("seed"))
         members = np.stack(stacks)
-        print(f"ensemble: {members.shape[0]} members")
+        print(f"ensemble: {members.shape[0]} members, seeds {member_seeds}")
 
     results = verify.score(fc, obs, fc_times, grid, members=members)
+    results["member_seeds"] = member_seeds
+    results["single_run_seed"] = hero.attrs.get("seed")
+    if members is not None:
+        # Member 0 was run with the single run's seed in a separate execution; how
+        # far apart they are is a reproducibility fact worth reporting, not assuming.
+        both = np.isfinite(fc) & np.isfinite(members[0])
+        results["member0_vs_single_max_abs_diff"] = float(np.abs(members[0][both] - fc[both]).max())
+        print(f"member 0 vs single run: max |diff| = {results['member0_vs_single_max_abs_diff']:.3f} dBZ")
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(results, indent=1), encoding="utf-8")
 
