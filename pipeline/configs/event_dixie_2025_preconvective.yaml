@@ -1,0 +1,34 @@
+# THE HARDER ASK — same outbreak, initialised BEFORE convection began.
+#
+# The 00Z sibling (event_dixie_2025.yaml) starts with supercells already on the
+# HRRR analysis, so it is closer to a nowcast extension than a forecast: the model
+# is handed real storms and asked to advance them. A meteorologist audience will
+# press on exactly that, and they will be right to.
+#
+# This init is genuinely pre-convective — the first SPC tornado report of the day
+# is at 22Z, four hours after this start time — so the 04Z-05Z peak lands at lead
+# +10/+11 h and the claim becomes a real forecast: the model has to INITIATE the
+# convection, not just move it.
+#
+# It is the scientifically harder ask and it may simply not hold up. Run both in
+# one pod session (the marginal cost is minutes), inspect, and ship whichever
+# survives. If this one produces a recognisable, correctly-placed reflectivity
+# signature at +10 h it is by far the better story; if it smears, say so and ship
+# the 00Z run instead.
+#
+# 18Z is a GFS synoptic cycle. HRRR availability verified against the real NOAA
+# archive: all three product indices present, largest GRIB message 2.91 MB against
+# the 5 MB ceiling (42% headroom).
+init: "2025-03-14T18:00:00"
+nsteps: 18            # HOURLY -> 12Z, covering the full run-up and the peak
+
+hero_variables: [u10m, v10m, t2m, msl, refc]
+coarse_variables: [u10m, v10m, t2m, tcwv, msl]
+
+seed: 20250314
+output: /out/dixie_2025_pre.zarr
+
+storm_name: "14 March 2025 tornado outbreak"
+place_label: "Central US · StormCast 3 km domain"
+# 10 = 04Z, the peak report hour, at lead +10 h from this init.
+hero_frame: 10

@@ -1,0 +1,45 @@
+# THE US HERO — the 14-15 March 2025 tornado outbreak, overnight phase.
+#
+# Part of the 13-16 March 2025 outbreak: the largest March outbreak on record,
+# ~113-118 tornadoes across 14 states, 3 EF4s, ~44 deaths. StormCast v1's domain
+# is welded to 31.14-45.36 N / 85.42-109.63 W, which covers the OVERNIGHT
+# Missouri/Arkansas/Illinois phase almost completely — 103 of the 104 SPC tornado
+# reports for 14 March fall inside it, and the whole 02Z-06Z core sits 300-460 km
+# from the nearest edge.
+#
+# What this run contains: the Diaz AR EF4 at 04:13Z (190 mph, the strongest
+# tornado of the entire outbreak), the Fifty-Six/Fairdealing EF4 with its 119-mile
+# track, Poplar Bluff MO EF3, five EF3s in Missouri, and 13 touchdowns across the
+# St. Louis metro including the EF2 past Lambert International.
+#
+# Init chosen at 00Z: the SPC report density peaks hard at 04Z-05Z (24 and 23
+# reports), so the peak lands at lead +4/+5 h — squarely inside StormCast's design
+# regime, with the HRRR analysis handing it real storms to advance rather than
+# asking it to initiate convection from nothing. 00Z is also a GFS synoptic cycle,
+# which the conditioning source hard-requires (GFS._validate_time rejects
+# non-6-hourly times).
+#
+# HRRR availability verified against the real NOAA archive before this was written:
+# all three product indices present, all checked surface variables present, largest
+# GRIB message 2.93 MB against earth2studio's 5 MB ceiling (41% headroom).
+init: "2025-03-15T00:00:00"
+nsteps: 12            # HOURLY steps -> 12Z, through the whole overnight peak
+
+# StormCast v1 output subset worth rendering. refc is the reason this event exists:
+# composite reflectivity is what a convection-allowing model buys you, and the
+# coarse global model cannot produce it at all.
+hero_variables: [u10m, v10m, t2m, msl, refc]
+
+# The coarse side of the reveal — the SAME global field StormCast is conditioned
+# on, so the wipe is an honest before/after rather than two unrelated pictures.
+coarse_variables: [u10m, v10m, t2m, tcwv, msl]
+
+seed: 20250315
+output: /out/dixie_2025.zarr
+
+# First-class manifest run hints (schema run.stormName/heroFrame/placeLabel).
+storm_name: "14 March 2025 tornado outbreak"
+place_label: "Central US · StormCast 3 km domain"
+# 4 = 04Z, the hour with the most tornado reports (24) and the Diaz EF4 at 04:13Z.
+# TUNE after the run: pick the most developed frame from the real fields.
+hero_frame: 4

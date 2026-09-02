@@ -20,6 +20,9 @@ REGION=__REGION__
 BUCKET=__BUCKET__
 ECR_URI=__ECR_URI__
 TAG=__TAG__
+BAKE_MODELS=__BAKE_MODELS__
+DOCKERFILE=__DOCKERFILE__
+BASE_TAG=__BASE_TAG__
 
 upload_log() {
   command -v aws >/dev/null 2>&1 && \
@@ -46,9 +49,13 @@ timeout __JOB_TIMEOUT__ bash -c '
   mkdir -p /build && cd /build
   aws s3 cp "s3://'"$BUCKET"'/build/context.tar.gz" . --region '"$REGION"'
   tar xzf context.tar.gz
-  docker build -t "'"$ECR_URI"':'"$TAG"'" .
+  # Login BEFORE build: Dockerfile.bake pulls its FROM image from our private ECR.
   aws ecr get-login-password --region '"$REGION"' \
     | docker login --username AWS --password-stdin "'"${ECR_URI%%/*}"'"
+  docker build -f '"$DOCKERFILE"' \
+    --build-arg BAKE_MODELS='"$BAKE_MODELS"' \
+    --build-arg BASE_IMAGE="'"$ECR_URI"':'"$BASE_TAG"'" \
+    -t "'"$ECR_URI"':'"$TAG"'" .
   docker push "'"$ECR_URI"':'"$TAG"'"
   echo "PUSH COMPLETE"
 '

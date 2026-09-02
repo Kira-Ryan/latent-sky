@@ -20,6 +20,15 @@ SG_ID=${SG_ID:?source latentsky.env first}
 INSTANCE_TYPE=${BUILD_INSTANCE_TYPE:-c6i.2xlarge}     # 8 vCPU — inside the 16-vCPU standard quota
 ECR_URI="${LATENTSKY_AWS_ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/latentsky-forecast"
 TAG=${TAG:-0.17.0}
+# 1 bakes SFNO + CorrDiff into the image (~+7.6 GB). Worth it: fetching them from
+# NGC at run time measured 67 kB/s into RunPod (a 27-hour ETA), while the ECR pull
+# runs at ~7 MB/s. Pay the download once, on AWS, into a layer.
+BAKE_MODELS=${BAKE_MODELS:-0}
+# Dockerfile.bake starts FROM an already-pushed image and adds only the weights
+# layer, so the ~90-min earth2studio compile is not repeated on a fresh builder
+# (a new instance has no docker cache). BASE_TAG is what it builds on top of.
+DOCKERFILE=${DOCKERFILE:-Dockerfile}
+BASE_TAG=${BASE_TAG:-0.17.0}
 DEADLINE_SECONDS=${DEADLINE_SECONDS:-10800}           # 3 h hard ceiling ≈ $1 worst case
 JOB_TIMEOUT=${JOB_TIMEOUT:-150m}
 PROFILE_NAME="latentsky-build"
@@ -49,7 +58,7 @@ fi
 # ── Stage the build context (Dockerfile + configs + the two copied files) ──────
 echo "staging build context to s3://$BUCKET/build/context.tar.gz…"
 tar czf /tmp/latentsky-context.tar.gz -C ../../pipeline \
-  Dockerfile configs src/latentsky/forecast.py tools/bake_models.py
+  Dockerfile Dockerfile.bake configs src/latentsky/forecast.py tools/bake_models.py
 aws s3 cp /tmp/latentsky-context.tar.gz "s3://$BUCKET/build/context.tar.gz" --region "$REGION" --only-show-errors
 echo "context: $(wc -c < /tmp/latentsky-context.tar.gz) bytes"
 
@@ -63,6 +72,9 @@ sed -e "s|__DEADLINE_SECONDS__|$DEADLINE_SECONDS|" \
     -e "s|__BUCKET__|$BUCKET|" \
     -e "s|__ECR_URI__|$ECR_URI|" \
     -e "s|__TAG__|$TAG|" \
+    -e "s|__BAKE_MODELS__|$BAKE_MODELS|" \
+    -e "s|__DOCKERFILE__|$DOCKERFILE|" \
+    -e "s|__BASE_TAG__|$BASE_TAG|" \
     userdata-build.sh.tpl > "$NATIVE_TMP/latentsky-userdata-build.sh"
 
 # Newest Canonical Ubuntu 24.04 AMI by creation date. (The SSM public-parameter

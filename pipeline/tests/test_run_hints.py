@@ -161,13 +161,29 @@ def test_every_event_config_carries_consistent_hints(path):
     assert set(hints) == {"stormName", "heroFrame", "placeLabel"}, (
         f"{path.name}: every event config must carry all three run hints"
     )
-    assert hints["stormName"].startswith("Typhoon ")
-    # The hero window is hero_steps frames — heroFrame must land inside it.
-    assert 0 <= hints["heroFrame"] < cfg["hero_steps"], (
+    assert hints["stormName"].strip(), f"{path.name}: stormName must not be blank"
+
+    # The hero window differs by model family. A CorrDiff event downscales only
+    # the first hero_steps steps, so its window is hero_steps frames. A StormCast
+    # event is convection-allowing throughout — every step IS hero output — so its
+    # window is the whole run, nsteps + 1 frames including the initial condition.
+    window = cfg["hero_steps"] if "hero_steps" in cfg else cfg["nsteps"] + 1
+    assert 0 <= hints["heroFrame"] < window, (
         f"{path.name}: hero_frame {hints['heroFrame']} outside the "
-        f"{cfg['hero_steps']}-step hero window"
+        f"{window}-frame hero window"
     )
 
 
 def test_event_configs_exist():
-    assert len(EVENT_CONFIGS) == 3, f"expected 3 event configs, found {EVENT_CONFIGS}"
+    """The shipped events are all present and parse — NOT a frozen count.
+
+    Asserting an exact number fails every time an event is added, which is a data
+    change the config directory exists to make cheap.
+    """
+    stems = {p.stem for p in EVENT_CONFIGS}
+    for expected in ("event_gaemi_2024", "event_doksuri_2023", "event_dixie_2025"):
+        assert expected in stems, f"{expected}.yaml missing from configs/"
+    for path in EVENT_CONFIGS:
+        cfg = yaml.safe_load(path.read_text(encoding="utf-8"))
+        for key in ("init", "nsteps", "coarse_variables", "output"):
+            assert key in cfg, f"{path.name}: missing required key {key!r}"

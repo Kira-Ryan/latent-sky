@@ -1,0 +1,21 @@
+# Bake-only layer: add model weights to an already-built forecast image.
+#
+# Rebuilding from pipeline/Dockerfile costs ~90 min on a fresh builder — a new
+# instance has no docker cache, so the earth2studio install recompiles its CUDA
+# extensions from source every time. This starts from the pushed image instead:
+# ECR pull inside AWS, run the bake, push one new layer. ~25 min.
+#
+#   docker build -f Dockerfile.bake --build-arg BASE_IMAGE=<ecr>:0.17.0 \
+#                -t <ecr>:0.17.0-models .
+#
+# WORKDIR, ENV (incl. EARTH2STUDIO_CACHE=/cache/earth2studio), ENTRYPOINT and CMD
+# are all inherited from the base — the cache path baked here is therefore exactly
+# the path the forecast reads at run time. Do not override EARTH2STUDIO_CACHE when
+# running, or the baked weights are bypassed and NGC is hit again (measured
+# 67.6 kB/s into RunPod on 26 Aug 2026).
+
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+COPY tools/bake_models.py /opt/latentsky/bake_models.py
+RUN uv run python /opt/latentsky/bake_models.py
