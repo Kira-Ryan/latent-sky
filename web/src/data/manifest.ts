@@ -5,10 +5,10 @@
  * malformed manifest must fail loudly, never render half a globe.
  */
 
-export type Variable = "wind10m" | "t2m" | "mrr" | "refc" | "tcwv" | "msl";
+export type Variable = "wind10m" | "t2m" | "mrr" | "refc" | "prob40" | "tcwv" | "msl";
 export type LayerKind = "global" | "hero-fine" | "hero-coarse" | "hero-observed";
 
-const VARIABLES: readonly Variable[] = ["wind10m", "t2m", "mrr", "refc", "tcwv", "msl"];
+const VARIABLES: readonly Variable[] = ["wind10m", "t2m", "mrr", "refc", "prob40", "tcwv", "msl"];
 const KINDS: readonly LayerKind[] = ["global", "hero-fine", "hero-coarse", "hero-observed"];
 
 export interface RunInfo {

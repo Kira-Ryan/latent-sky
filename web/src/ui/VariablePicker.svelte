@@ -11,6 +11,8 @@
     // from CWB samples, refc 0-75 dBZ for US supercells), and §7.2b fixes a
     // variable's range globally and forever.
     refc: "Reflectivity",
+    // Ensemble agreement on >= 40 dBZ: how sure the model is, cell by cell.
+    prob40: "Probability",
     tcwv: "Water vapour",
     msl: "Pressure",
   };

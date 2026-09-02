@@ -31,11 +31,18 @@ refc uses its OWN ramp (0-75 dBZ), not mrr's (0-55). Reusing mrr would have
 retroactively rescaled both shipped Taiwan events, because §7.2b fixes vmin/vmax
 globally per variable forever.
 
+ENSEMBLE (optional): --member, repeatable, names the per-member hero stores a
+`forecast_stormcast.py --members N` run wrote. They add ONE layer, prob40-fine:
+the percentage of members at or above 40 dBZ in each cell, the same threshold
+the FSS verification scores. The deterministic refc-fine layer is untouched.
+
 Usage:
     python -m latentsky.encode_stormcast \
         --zarr data/zarr/dixie_2025.zarr \
         --event-config pipeline/configs/event_dixie_2025.yaml \
-        --out data/web/dixie --event-id us-dixie-2025
+        --out data/web/dixie --event-id us-dixie-2025 \
+        [--mrms data/zarr/mrms_dixie_2025_pre.npz] \
+        [--member data/zarr/dixie_2025_pre_ens_m00_hero.zarr --member ...]
 """
 
 from __future__ import annotations
@@ -75,6 +82,25 @@ def to_180(lon: np.ndarray) -> np.ndarray:
 
 class EncodeStormcastError(RuntimeError):
     """The run could not be encoded. The build must stop."""
+
+
+PROB_THRESHOLD_DBZ = 40.0
+
+
+def exceedance_probability(fields: np.ndarray, thr: float = PROB_THRESHOLD_DBZ) -> np.ndarray:
+    """Percent of members (axis 0) at or above `thr`, per cell.
+
+    NaN wherever any member is NaN, so a hole in one member never reads as
+    "no member exceeded". A single member is not an ensemble and is refused.
+    """
+    fields = np.asarray(fields, dtype=np.float32)
+    if fields.ndim != 3 or fields.shape[0] < 2:
+        raise EncodeStormcastError(
+            f"an ensemble probability needs [members >= 2, y, x], got {fields.shape}"
+        )
+    p = 100.0 * np.mean(fields >= thr, axis=0)
+    p[np.isnan(fields).any(axis=0)] = np.nan
+    return p.astype(np.float32)
 
 
 def open_stores(coarse_path: pathlib.Path) -> tuple:
@@ -139,6 +165,7 @@ def encode_layers(
     coastline_path: pathlib.Path = basemap_mod.DEFAULT_COASTLINE,
     event_id: str | None = None,
     mrms_path: pathlib.Path | None = None,
+    member_paths: list[pathlib.Path] = (),
 ) -> None:
     t0 = time.perf_counter()
     out_dir = pathlib.Path(out_dir)
@@ -250,6 +277,55 @@ def encode_layers(
         ]
         print(f"observed layer: MRMS {m_raw.shape[1]}x{m_raw.shape[2]} at 0.01 deg -> {fine_grid.width}x{fine_grid.height}")
 
+    # ── Ensemble probability (optional): agreement across StormCast members ────
+    # Members share the initial condition and the conditioning; only the
+    # diffusion sampler's seed differs. Each must sit on exactly the hero grid
+    # and the hero frames, or the fraction would be taken across different
+    # places and instants and called agreement.
+    if member_paths:
+        import zarr
+
+        members = []
+        for p in member_paths:
+            m = zarr.open(str(p), mode="r")
+            for key in ("lat", "lon", "time", "lead_time"):
+                if not np.array_equal(np.asarray(m[key]), np.asarray(hero[key])):
+                    raise EncodeStormcastError(f"{p}: {key} differs from the hero store's")
+            members.append(m)
+        if len(members) < 2:
+            raise EncodeStormcastError("an ensemble probability needs at least two --member stores")
+        seeds = [m.attrs.get("seed") for m in members]
+
+        def prob_field(i: int) -> np.ndarray:
+            return exceedance_probability(
+                np.stack([np.asarray(m["hero_refc"][0, i]) for m in members])
+            )
+
+        # The wipe compares like with like (the viewer refuses a pair whose
+        # variables differ, and rightly: one legend cannot describe two ramps). So
+        # the observed side of the probability is the radar's own exceedance in
+        # the same units: 100 where MRMS reached the threshold, 0 elsewhere, NaN
+        # outside coverage. Forecast probability against what happened.
+        pair_id = None
+        if mrms_path is not None:
+            def observed_exceedance(i: int) -> np.ndarray:
+                a = mrms_field(i)
+                return np.where(np.isnan(a), np.nan, (a >= PROB_THRESHOLD_DBZ) * 100.0).astype(np.float32)
+
+            plan.append((
+                "prob40-observed", "hero-observed", "prob40", observed_exceedance, mrms_index,
+                f" — MRMS radar at or above {PROB_THRESHOLD_DBZ:.0f} dBZ, observed", "prob40-fine", 1.0,
+            ))
+            pair_id = "prob40-observed"
+
+        plan.append((
+            "prob40-fine", "hero-fine", "prob40", prob_field, fine_index,
+            f" — {len(members)}-member StormCast ensemble, 3 km", pair_id, 3.0,
+        ))
+        print(f"ensemble layer: {len(members)} members (seeds {seeds}) -> "
+              f"probability of >= {PROB_THRESHOLD_DBZ:.0f} dBZ"
+              + (", paired with the observed exceedance" if pair_id else ""))
+
     prepare_out_dir(out_dir)
 
     luts: dict[str, tuple[np.ndarray, str, str]] = {}
@@ -303,7 +379,11 @@ def encode_layers(
             "downscaling": "none — StormCast is convection-allowing throughout; the "
                            "coarse layer is the 25 km GFS forecast it is conditioned on",
         },
-        "generatedNote": GENERATED_NOTE + (MRMS_NOTE if mrms_path is not None else ""),
+        "generatedNote": (
+            GENERATED_NOTE
+            + (MRMS_NOTE if mrms_path is not None else "")
+            + (ENSEMBLE_NOTE.format(n=len(member_paths)) if member_paths else "")
+        ),
         **run_hints(cfg),
     }
     manifest = build_manifest(
@@ -329,6 +409,13 @@ MRMS_NOTE = (
     " The observed reflectivity beside it is NOAA's MRMS radar composite at the "
     "same instants, resampled onto the same grid: what actually happened, from "
     "radar, so the comparison is forecast against observation."
+)
+
+ENSEMBLE_NOTE = (
+    " The probability layer counts how many of {n} StormCast members — the same "
+    "initial condition, only the diffusion sampler's random seed changed — put "
+    "composite reflectivity at or above 40 dBZ in each cell. Where they agree the "
+    "model is confident; where they do not, it is guessing, and the map says so."
 )
 
 
@@ -363,11 +450,14 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--mrms", type=pathlib.Path, default=None,
                     help="MRMS composite-reflectivity npz (from mrms_fetch) to ship as the "
                          "observed layer refc-fine is compared against")
+    ap.add_argument("--member", type=pathlib.Path, action="append", default=[],
+                    help="per-member hero store of an ensemble run (repeatable, >= 2); "
+                         "adds the prob40-fine agreement layer")
     args = ap.parse_args(argv)
     encode_layers(
         args.zarr, args.out, args.event_config,
         config=args.config, lut_dir=args.luts, event_id=args.event_id,
-        mrms_path=args.mrms,
+        mrms_path=args.mrms, member_paths=args.member,
     )
 
 

@@ -66,6 +66,23 @@ refc:
     zero_below: 5.0             # below ~5 dBZ is clear air; keep the globe visible
     one_by: 15.0
 
+prob40:
+  label: "Probability of ≥ 40 dBZ"
+  units: "%"
+  # Ensemble agreement: the share of StormCast members (same initial condition,
+  # only the diffusion sampler's seed differs) at or above 40 dBZ in each cell.
+  # 40 dBZ is the threshold the FSS verification scores, so the layer and the
+  # score talk about the same thing. Sequential, dark to bright: solar starts
+  # near-black, so low agreement stays quiet on the dark globe and confident
+  # cells glow.
+  cmap: "cmocean:solar"
+  vmin: 0.0
+  vmax: 100.0
+  alpha:
+    policy: ramp
+    zero_below: 5.0             # no member, or one in twenty: nothing to show
+    one_by: 30.0                # a quarter of the members agreeing is worth a solid cell
+
 tcwv:
   label: "Total column water vapour"
   units: "kg/m²"

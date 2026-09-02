@@ -128,11 +128,22 @@ def build_manifest(
                 f"{len(frame_times)} frame times"
             )
 
-    layer_ids = {layer.layer_id for layer in layers}
+    by_id = {layer.layer_id: layer for layer in layers}
     for layer in layers:
-        if layer.pair_with is not None and layer.pair_with not in layer_ids:
+        if layer.pair_with is None:
+            continue
+        if layer.pair_with not in by_id:
             raise ManifestError(
                 f"layer {layer.layer_id}: pairWith {layer.pair_with!r} is not a layer id"
+            )
+        # The viewer refuses a pair whose variables differ (one legend cannot
+        # describe two ramps), and it does so at load time in the browser. Fail
+        # here instead, where the build can see it.
+        other = by_id[layer.pair_with]
+        if other.variable != layer.variable:
+            raise ManifestError(
+                f"layer {layer.layer_id} ({layer.variable}) pairs with {other.layer_id} "
+                f"({other.variable}) — a reveal must compare the same variable"
             )
 
     manifest: dict = {

@@ -65,7 +65,7 @@
         "additionalProperties": false,
         "properties": {
           "kind": { "enum": ["global", "hero-fine", "hero-coarse", "hero-observed"] },
-          "variable": { "enum": ["wind10m", "t2m", "mrr", "refc", "tcwv", "msl"] },
+          "variable": { "enum": ["wind10m", "t2m", "mrr", "refc", "prob40", "tcwv", "msl"] },
           "label": { "type": "string" },
           "units": { "type": "string" },
           "rect": {
