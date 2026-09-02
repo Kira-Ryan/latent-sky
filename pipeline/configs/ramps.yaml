@@ -46,6 +46,26 @@ mrr:
     zero_below: 0.0
     one_by: 5.0
 
+refc:
+  label: "Composite reflectivity"
+  units: "dBZ"
+  # A SEPARATE entry from mrr, deliberately. Both are reflectivity in dBZ, but
+  # §7.2b makes vmin/vmax global per variable FOREVER, so widening mrr's ceiling
+  # to fit US supercells would retroactively rescale the two shipped Taiwan
+  # events — every frame of them would change colour. A new variable is the only
+  # way to give StormCast a range that fits without rewriting history.
+  cmap: "cmweather:ChaseSpectral"   # same ramp as mrr, so the two read alike
+  vmin: 0.0
+  # HRRR composite reflectivity for this outbreak reached 61.56 dBZ on a real
+  # fetch, and supercell cores routinely exceed that; mrr's 55 ceiling would clip
+  # exactly the storms this event exists to show. 75 is the conventional top of a
+  # US radar scale and leaves headroom without wasting much ramp.
+  vmax: 75.0
+  alpha:
+    policy: ramp
+    zero_below: 5.0             # below ~5 dBZ is clear air; keep the globe visible
+    one_by: 15.0
+
 tcwv:
   label: "Total column water vapour"
   units: "kg/m²"

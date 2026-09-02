@@ -64,8 +64,8 @@
         "required": ["kind", "variable", "label", "units", "rect", "size", "lut", "vmin", "vmax", "identity", "frames"],
         "additionalProperties": false,
         "properties": {
-          "kind": { "enum": ["global", "hero-fine", "hero-coarse"] },
-          "variable": { "enum": ["wind10m", "t2m", "mrr", "tcwv", "msl"] },
+          "kind": { "enum": ["global", "hero-fine", "hero-coarse", "hero-observed"] },
+          "variable": { "enum": ["wind10m", "t2m", "mrr", "refc", "tcwv", "msl"] },
           "label": { "type": "string" },
           "units": { "type": "string" },
           "rect": {
@@ -89,6 +89,7 @@
             "items": { "type": "string" },
             "description": "Relative WebP path per frame, same length and order as top-level frames"
           },
+          "nativeKm": { "type": "number", "exclusiveMinimum": 0, "description": "Native resolution of the SOURCE model for this layer, in km. First-class because the UI states it to the viewer: the reveal pills used to hardcode \"2 km\" and silently lied the moment a 3 km model shipped. Absent means the UI must say nothing rather than guess." },
           "pairWith": { "type": "string", "description": "For hero layers: the layer id this one is compared against in the reveal" }
         }
       }

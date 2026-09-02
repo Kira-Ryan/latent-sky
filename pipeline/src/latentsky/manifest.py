@@ -162,6 +162,8 @@ def build_manifest(
         }
         if layer.pair_with is not None:
             entry["pairWith"] = layer.pair_with
+        if layer.native_km is not None:
+            entry["nativeKm"] = layer.native_km
         manifest["layers"][layer.layer_id] = entry
     return manifest
 

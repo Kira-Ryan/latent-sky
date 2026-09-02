@@ -164,6 +164,7 @@ class LayerRecord:
     identity: str
     frames: list[str]    # relative WebP path per frame, same order as manifest frames
     pair_with: str | None = None
+    native_km: float | None = None   # source model resolution, stated by the UI
 
 
 def make_layer_record(
@@ -177,6 +178,7 @@ def make_layer_record(
     frames: list[str],
     label_suffix: str = "",
     pair_with: str | None = None,
+    native_km: float | None = None,
 ) -> LayerRecord:
     """Build a LayerRecord whose identity is derived from the GLOBAL RampSpec."""
     return LayerRecord(
@@ -193,6 +195,7 @@ def make_layer_record(
         identity=identity_checksum(spec.variable, lut_sha256, spec.vmin, spec.vmax, spec.alpha),
         frames=frames,
         pair_with=pair_with,
+        native_km=native_km,
     )
 
 
