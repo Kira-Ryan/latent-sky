@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "events": [
+    {
+      "id": "public-era5-gaemi-week-2024",
+      "title": "Global \u2014 Typhoon Gaemi week",
+      "subtitle": "ERA5 reanalysis, 0.5\u00b0",
+      "manifest": "manifest.json",
+      "kind": "global-only",
+      "region": "global",
+      "hasHero": false,
+      "default": true
+    },
+    {
+      "id": "taiwan-gaemi-2024",
+      "title": "Taiwan \u2014 Typhoon Gaemi",
+      "subtitle": "AI forecast \u00b7 SFNO \u2192 CorrDiff, ~2 km generated",
+      "manifest": "taiwan/manifest.json",
+      "kind": "hero",
+      "region": "taiwan",
+      "hasHero": true,
+      "default": false
+    },
+    {
+      "id": "us-dixie-2025",
+      "title": "Central US \u2014 14 March 2025 tornado outbreak",
+      "subtitle": "AI forecast \u00b7 StormCast, 3 km convection-allowing",
+      "manifest": "dixie/manifest.json",
+      "kind": "hero",
+      "region": "conus",
+      "hasHero": true,
+      "default": false
+    },
+    {
+      "id": "taiwan-doksuri-2023",
+      "title": "Taiwan \u2014 Typhoon Doksuri",
+      "subtitle": "AI forecast \u00b7 SFNO \u2192 CorrDiff, ~2 km generated",
+      "manifest": "taiwan-doksuri/manifest.json",
+      "kind": "hero",
+      "region": "taiwan",
+      "hasHero": true,
+      "default": false
+    }
+  ]
+}
