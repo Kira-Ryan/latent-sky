@@ -20,9 +20,10 @@ Three things are specific to StormCast and are NOT in forecast.py:
 
   1. TIME STEP IS 1 HOUR, not 6.
   2. StormCast.__call__ MUTATES ITS INPUT IN PLACE — `x[i, j, k:k+1] = self._forward(...)`
-     with no clone (StormCastCONUS does clone; v1 does not). The initial-condition
-     tensor is therefore cloned before the iterator is created, or the copy we
-     hold is silently overwritten mid-run.
+     with no clone (StormCastCONUS does clone; v1 does not; reported upstream as
+     NVIDIA/earth2studio#1133). Every iterator is therefore created from its own
+     clone of the initial condition, or the copy we hold is silently overwritten
+     mid-run.
   3. The conditioning global forecast is fetched INSIDE every model step, from
      the data source handed to load_model(). That puts ~26 byte-range GETs in the
      inner loop, so per-step wall clock is part network latency, not just compute.
@@ -31,6 +32,13 @@ Output, deliberately shaped for latentsky.encode_forecast:
     <out>.zarr        coarse global GFS   u10m v10m t2m tcwv msl   [1, N, 721, 1440]
     <out>_hero.zarr   StormCast 3 km      hero_{u10m,v10m,t2m,msl,refc}
                                           [1, N, 512, 640] + 2-D lat/lon
+
+With --members N the run is an ensemble: member k reseeds torch with seed+k,
+integrates from its own copy of the same HRRR initial condition, and writes
+<out>_m{k:02d}_hero.zarr (root attrs carry `member` and `seed`). The coarse store
+is written once and the conditioning is shared. StormCast's spread comes from the
+diffusion sampler's noise alone, so a member whose first step is identical to
+member 0's means the seed never reached the sampler, and the run stops there.
 
 StormCast's output_coords carry only hrrr_y/hrrr_x (projection metres), so the
 2-D lat/lon the encoder needs for regridding are written explicitly from
@@ -79,6 +87,13 @@ def select_variables(x, coords, names: list[str]):
     return out, new_coords
 
 
+def hero_path_for(out_path: str, member: int | None) -> str:
+    """<out>_hero.zarr for a single run; <out>_m{k:02d}_hero.zarr for ensemble member k."""
+    stem = out_path[: -len(".zarr")] if out_path.endswith(".zarr") else out_path
+    tag = "" if member is None else f"_m{member:02d}"
+    return f"{stem}{tag}_hero.zarr"
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
@@ -88,6 +103,9 @@ def main() -> None:
     ap.add_argument("--nsteps", type=int, default=None,
                     help="override config nsteps (smoke tests)")
     ap.add_argument("--output", default=None, help="override config output path")
+    ap.add_argument("--members", type=int, default=None,
+                    help="ensemble size; overrides config `members` (default 1). Member k "
+                         "reseeds with seed+k and writes <out>_m{k:02d}_hero.zarr")
     args = ap.parse_args()
 
     with open(args.config) as fh:
@@ -99,9 +117,12 @@ def main() -> None:
     hero_vars: list[str] = cfg["hero_variables"]
     out_path: str = args.output if args.output is not None else cfg["output"]
     seed: int = cfg.get("seed", 0)
+    members: int = args.members if args.members is not None else int(cfg.get("members", 1))
+    if members < 1:
+        raise SystemExit(f"members must be >= 1, got {members}")
 
     log(f"config {args.config}: init={init.isoformat()} nsteps={nsteps} (hourly) "
-        f"-> {out_path}")
+        f"members={members} seed={seed} -> {out_path}")
 
     from collections import OrderedDict
 
@@ -200,9 +221,6 @@ def main() -> None:
         )
     log(f"all {len(coords['variable'])} input channels carry data")
 
-    # StormCast mutates its input in place; keep an untouched copy of the IC.
-    x = x.clone()
-
     # ── Stores ────────────────────────────────────────────────────────────────
     def _store(path: str) -> ZarrBackend:
         return ZarrBackend(
@@ -215,26 +233,15 @@ def main() -> None:
             ],
         )
 
-    hero_path = (
-        out_path[: -len(".zarr")] + "_hero.zarr"
-        if out_path.endswith(".zarr")
-        else out_path + "_hero"
-    )
     io_coarse = _store(out_path)
-    io_hero = _store(hero_path)
+    hero_paths = (
+        [hero_path_for(out_path, None)]
+        if members == 1
+        else [hero_path_for(out_path, k) for k in range(members)]
+    )
 
     step_lead = np.timedelta64(1, "h")
     lead_all = np.asarray([step_lead * i for i in range(nsteps + 1)]).flatten()
-
-    # Hero arrays on StormCast's own index grid. hrrr_y/hrrr_x are projection
-    # metres, not degrees — the 2-D lat/lon written below are what the encoder
-    # regrids from.
-    hero_coords = OrderedDict()
-    hero_coords["time"] = times
-    hero_coords["lead_time"] = lead_all
-    hero_coords["hrrr_y"] = model.hrrr_y
-    hero_coords["hrrr_x"] = model.hrrr_x
-    io_hero.add_array(hero_coords, [f"hero_{v}" for v in hero_vars])
 
     # Coarse GFS store, on the global 0.25 deg grid the encoder's taiwan_subset()
     # style gating expects. Fetched once for the whole window rather than per step.
@@ -258,37 +265,76 @@ def main() -> None:
     log(f"coarse store written: {len(coarse_vars)} variables "
         f"{tuple(gfs_coords['lat'].shape)}x{tuple(gfs_coords['lon'].shape)}")
 
-    # The 2-D geolocation the hero grid needs, written once as plain arrays.
+    # The 2-D geolocation the hero grid needs, written into every hero store.
     lat2d = model.lat.cpu().numpy() if hasattr(model.lat, "cpu") else np.asarray(model.lat)
     lon2d = model.lon.cpu().numpy() if hasattr(model.lon, "cpu") else np.asarray(model.lon)
-    io_hero.root.create_array(
-        "lat", shape=lat2d.shape, chunks=lat2d.shape, dtype="float32",
-        dimension_names=["hrrr_y", "hrrr_x"],
-    )
-    io_hero.root["lat"][:] = lat2d.astype("float32")
-    io_hero.root.create_array(
-        "lon", shape=lon2d.shape, chunks=lon2d.shape, dtype="float32",
-        dimension_names=["hrrr_y", "hrrr_x"],
-    )
-    io_hero.root["lon"][:] = lon2d.astype("float32")
-    log(f"hero geolocation written: lat/lon {lat2d.shape} "
+    log(f"hero geolocation: lat/lon {lat2d.shape} "
         f"({lat2d.min():.2f}..{lat2d.max():.2f} N, {lon2d.min():.2f}..{lon2d.max():.2f} E)")
 
+    def open_hero(path: str, member: int, member_seed: int) -> ZarrBackend:
+        """A hero store on StormCast's own index grid, every array pre-registered.
+
+        hrrr_y/hrrr_x are projection metres, not degrees — the 2-D lat/lon written
+        alongside are what the encoder regrids from.
+        """
+        io = _store(path)
+        hero_coords = OrderedDict()
+        hero_coords["time"] = times
+        hero_coords["lead_time"] = lead_all
+        hero_coords["hrrr_y"] = model.hrrr_y
+        hero_coords["hrrr_x"] = model.hrrr_x
+        io.add_array(hero_coords, [f"hero_{v}" for v in hero_vars])
+        for name, arr in (("lat", lat2d), ("lon", lon2d)):
+            io.root.create_array(
+                name, shape=arr.shape, chunks=arr.shape, dtype="float32",
+                dimension_names=["hrrr_y", "hrrr_x"],
+            )
+            io.root[name][:] = arr.astype("float32")
+        io.root.attrs.update({"member": member, "seed": member_seed, "members": members})
+        return io
+
     # ── Integrate ─────────────────────────────────────────────────────────────
-    iterator = model.create_iterator(x, coords)
+    # StormCast v1 mutates its input in place (NVIDIA/earth2studio#1133), so every
+    # member integrates from its own copy of the untouched initial condition. The
+    # only source of spread is the diffusion sampler's noise, which is why each
+    # member reseeds torch: a first step identical to member 0's means the seed
+    # never reached the sampler, and stopping there beats writing N copies of one
+    # forecast.
+    first_step_ref = None
+    for k, hero_path in enumerate(hero_paths):
+        member_seed = seed + k
+        torch.manual_seed(member_seed)
+        np.random.seed(member_seed)
+        io_hero = open_hero(hero_path, k, member_seed)
+        t_member = time.time()
+        iterator = model.create_iterator(x.clone(), coords)
 
-    for step, (xs, cs) in enumerate(iterator):
-        if step > nsteps:
-            break
-        t_step = time.time()
-        xh, ch = select_variables(xs, cs, hero_vars)
-        xl, cl, names = split_coords(xh, ch)
-        io_hero.write(xl, cl, [f"hero_{n}" for n in names])
-        peak = float(xs.max())
-        log(f"step {step:02d}/{nsteps} done in {time.time() - t_step:.1f}s "
-            f"(max value {peak:.1f})")
+        for step, (xs, cs) in enumerate(iterator):
+            if step > nsteps:
+                break
+            t_step = time.time()
+            xh, ch = select_variables(xs, cs, hero_vars)
+            xl, cl, names = split_coords(xh, ch)
+            io_hero.write(xl, cl, [f"hero_{n}" for n in names])
+            peak = float(xs.max())
+            log(f"member {k} step {step:02d}/{nsteps} done in {time.time() - t_step:.1f}s "
+                f"(max value {peak:.1f})")
+            if step == 1:
+                if first_step_ref is None:
+                    first_step_ref = xh.detach().clone()
+                else:
+                    spread = float((xh - first_step_ref).abs().max())
+                    log(f"member {k} vs member 0 at step 1: max |diff| = {spread:.3f}")
+                    if spread == 0.0:
+                        raise SystemExit(
+                            f"FATAL: member {k} (seed {member_seed}) reproduced member 0 "
+                            "exactly at step 1 — the seed is not reaching the sampler"
+                        )
 
-    log(f"forecast complete -> {out_path} + {hero_path}")
+        log(f"member {k} (seed {member_seed}) complete in {time.time() - t_member:.0f}s "
+            f"-> {hero_path}")
+
+    log(f"forecast complete -> {out_path} + {len(hero_paths)} hero store(s)")
 
 
 if __name__ == "__main__":
