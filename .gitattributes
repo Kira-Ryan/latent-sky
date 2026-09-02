@@ -15,6 +15,7 @@
 *.html text eol=lf
 Makefile text eol=lf
 Dockerfile text eol=lf
+Dockerfile.* text eol=lf
 
 # Binary assets
 *.webp binary
