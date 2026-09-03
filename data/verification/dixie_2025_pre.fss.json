@@ -5727,5 +5727,14 @@
   20250321
  ],
  "single_run_seed": null,
+ "event": {
+  "id": "us-dixie-2025",
+  "narrative": "dixie-2025",
+  "init": "2025-03-14T18:00:00Z",
+  "nsteps": 18,
+  "live_url": "https://latent-sky.dev/?event=us-dixie-2025",
+  "scored_at": "2026-09-03T09:41:34Z",
+  "mrms_worst_offset_s": 43.0
+ },
  "member0_vs_single_max_abs_diff": 0.0
 }

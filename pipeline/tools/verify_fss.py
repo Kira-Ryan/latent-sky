@@ -40,6 +40,11 @@ def main(argv: list[str] | None = None) -> None:
                     help="shipped manifest; asserts the scoring grid equals the display grid")
     ap.add_argument("--out", type=pathlib.Path, default=None)
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--event-id", default=None, help="catalogue id of the run (goes into results.event)")
+    ap.add_argument("--narrative", default="generic", choices=["generic", "dixie-2025"],
+                    help="which prose the report renders: the Dixie case study, or the generic "
+                         "data-driven reading a daily run gets")
+    ap.add_argument("--live-url", default=None, help="where the run is on the site")
     args = ap.parse_args(argv)
 
     hero = zarr.open(str(args.hero_zarr), mode="r")
@@ -89,6 +94,16 @@ def main(argv: list[str] | None = None) -> None:
     results = verify.score(fc, obs, fc_times, grid, members=members)
     results["member_seeds"] = member_seeds
     results["single_run_seed"] = hero.attrs.get("seed")
+    from datetime import datetime, timezone
+    results["event"] = {
+        "id": args.event_id,
+        "narrative": args.narrative,
+        "init": fc_times[0],
+        "nsteps": len(fc_times) - 1,
+        "live_url": args.live_url or (f"https://latent-sky.dev/?event={args.event_id}" if args.event_id else None),
+        "scored_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "mrms_worst_offset_s": float(np.abs(offsets).max()),
+    }
     if members is not None:
         # Member 0 was run with the single run's seed in a separate execution; how
         # far apart they are is a reproducibility fact worth reporting, not assuming.

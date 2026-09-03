@@ -93,15 +93,9 @@
 
 <div class="wrap">
   <div class="eyebrow">Latent Sky &middot; verification note</div>
-  <h1>StormCast Against the Radar</h1>
-  <p class="dek">NVIDIA StormCast v1, started at 18Z on 14 March 2025 with no storms yet on the analysis, scored hour by hour against NOAA's MRMS radar composite through the overnight tornado outbreak.</p>
-  <div class="meta">
-    <span><b>init</b> 2025-03-14 18:00Z</span>
-    <span><b>window</b> +0 to +18 h, hourly</span>
-    <span><b>domain</b> 31.1&ndash;45.4N, 109.6&ndash;85.4W</span>
-    <span><b>grid</b> 884 &times; 661, 2.39 km/px</span>
-    <span><b>live</b> <a href="https://latent-sky.dev/?event=us-dixie-2025">latent-sky.dev</a></span>
-  </div>
+  <h1 id="h1">StormCast Against the Radar</h1>
+  <p class="dek" id="dek"></p>
+  <div class="meta" id="meta"></div>
 
   <div class="tiles" id="tiles"></div>
   <p class="note">Every figure on this page is computed in the browser from the embedded results file, not typed in.</p>
@@ -169,9 +163,9 @@
 
   <h2>Method</h2>
   <div class="method"><dl>
-    <dt>Forecast</dt><dd>NVIDIA StormCast v1 (Apache-2.0 checkpoint) via earth2studio 0.17.0. HRRR analysis initial conditions at 18Z, GFS_FX conditioning at every hourly step, <span id="m-real">one realisation, seed fixed</span>.</dd>
-    <dt>Observation</dt><dd>NOAA MRMS <code>MergedReflectivityQCComposite_00.50</code> from <code>noaa-mrms-pds</code>, the file nearest each top of the hour. Worst time offset 43 seconds.</dd>
-    <dt>Grid</dt><dd>Both fields on the same 884&times;661 equirectangular grid the site renders, 2.39 km per pixel, rebuilt with the encoder's own rule and checked against the shipped manifest. Forecast regridded nearest-neighbour from its 512&times;640 curvilinear grid; MRMS from 0.01&deg; by nearest cell.</dd>
+    <dt>Forecast</dt><dd>NVIDIA StormCast v1 (Apache-2.0 checkpoint) via earth2studio 0.17.0. HRRR analysis initial conditions at <span id="m-init">18Z</span>, GFS_FX conditioning at every hourly step, <span id="m-real">one realisation, seed fixed</span>.</dd>
+    <dt>Observation</dt><dd>NOAA MRMS <code>MergedReflectivityQCComposite_00.50</code> from <code>noaa-mrms-pds</code>, the file nearest each top of the hour. Worst time offset <span id="m-offset">43</span> seconds.</dd>
+    <dt>Grid</dt><dd>Both fields on the same <span id="m-grid">884&times;661</span> equirectangular grid the site renders, <span id="m-px">2.39</span> km per pixel, rebuilt with the encoder's own rule. Forecast regridded nearest-neighbour from its 512&times;640 curvilinear grid; MRMS from 0.01&deg; by nearest cell.</dd>
     <dt>Masking</dt><dd>MRMS <code>-999</code> (outside radar coverage) excluded; <code>-99</code> (coverage, no echo) counted as 0 dBZ. Forecast pixels outside the curvilinear footprint excluded. The sentinel meaning was established empirically: zero <code>-999</code> cells inside the domain, and the Gulf and Atlantic corners entirely <code>-999</code>.</dd>
     <dt>FSS</dt><dd>Roberts and Lean 2008. Binary exceedance at 20, 30 and 40 dBZ; square neighbourhoods of 1, 5, 11, 21 and 41 pixels (2, 12, 26, 50 and 98 km); FSS = 1 &minus; MSE(P<sub>f</sub>, P<sub>o</sub>) / (mean P<sub>f</sub><sup>2</sup> + mean P<sub>o</sub><sup>2</sup>) over valid cells. Cells outside the mask are zero in both fields before filtering, so the mask edge neither creates nor absorbs neighbourhood mass. Self-tested: FSS(f, f) = 1, FSS(f, 0) = 0, non-decreasing with scale.</dd>
     <dt>Caveats</dt><dd><span id="m-cav">One diffusion sample, not an ensemble.</span> MRMS is radar-derived and quality-controlled, not absolute truth. Nearest-cell resampling of 1 km radar to 2.4 km keeps peaks but drops some texture. Zero-padding at the domain edge slightly deflates the largest neighbourhoods near the boundary.</dd>
@@ -192,42 +186,103 @@ const R = __RESULTS__;
 const L = R.leads;
 const KM = R.windows_km;
 const utc = (r) => r.valid.slice(11, 13) + "Z";
-const fmt = (v, d = 2) => (v == null || Number.isNaN(v)) ? "–" : v.toFixed(d);
+const fmt = (v, d = 2) => (v == null || !Number.isFinite(v)) ? "–" : v.toFixed(d);
+
+// The event this page is about. Results written before the event block existed
+// are the Dixie case study, so that is the fallback.
+const EV = R.event ?? { id: "us-dixie-2025", narrative: "dixie-2025", init: R.init, nsteps: L.length - 1, live_url: "https://latent-sky.dev/?event=us-dixie-2025" };
+const DIXIE = EV.narrative === "dixie-2025";
+const initDate = new Date(EV.init.endsWith("Z") ? EV.init : EV.init + "Z");
+const initH = String(initDate.getUTCHours()).padStart(2, "0") + "Z";
+const longDate = (d) => `${d.getUTCDate()} ${d.toLocaleString("en-GB", { month: "long", timeZone: "UTC" })} ${d.getUTCFullYear()}`;
+const shortDay = (iso) => { const d = new Date(iso); return `${d.getUTCDate()} ${d.toLocaleString("en-GB", { month: "short", timeZone: "UTC" })}`; };
+const [gw, gs, ge, gn] = R.grid.rect;
+const hemi = (v, pos, neg) => Math.abs(v).toFixed(1) + (v >= 0 ? pos : neg);
+
+const title = DIXIE ? "StormCast Against the Radar" : `StormCast Against the Radar, ${initH} ${longDate(initDate)}`;
+document.title = title;
+document.getElementById("h1").textContent = title;
+document.getElementById("dek").textContent = DIXIE
+  ? "NVIDIA StormCast v1, started at 18Z on 14 March 2025 with no storms yet on the analysis, scored hour by hour against NOAA's MRMS radar composite through the overnight tornado outbreak."
+  : `NVIDIA StormCast v1, started at ${initH} on ${longDate(initDate)} from the HRRR analysis and scored hour by hour against NOAA's MRMS radar composite through the following ${EV.nsteps} hours. A live daily run, verified the day after.`;
+document.getElementById("meta").innerHTML = [
+  `<span><b>init</b> ${EV.init.slice(0, 10)} ${EV.init.slice(11, 16)}Z</span>`,
+  `<span><b>window</b> +0 to +${EV.nsteps} h, hourly</span>`,
+  `<span><b>domain</b> ${hemi(gs, "N", "S")}&ndash;${hemi(gn, "N", "S")}, ${hemi(gw, "E", "W")}&ndash;${hemi(ge, "E", "W")}</span>`,
+  `<span><b>grid</b> ${R.grid.size[0]} &times; ${R.grid.size[1]}, ${R.grid.km_per_px.toFixed(2)} km/px</span>`,
+  EV.live_url ? `<span><b>live</b> <a href="${EV.live_url}">latent-sky.dev</a></span>` : "",
+].join("");
 
 function firstLead(pred) { for (const r of L) if (pred(r)) return r; return null; }
 const obsOn = firstLead(r => r.coverage["40"].observed >= 0.001);
 const fcOn  = firstLead(r => r.coverage["40"].forecast >= 0.001);
-const dtInit = Math.abs(obsOn.lead_h - fcOn.lead_h);
-let usefulScale = null, usefulHours = 0;
-for (let w = 0; w < KM.length; w++) {
-  const hrs = L.filter(r => r.lead_h >= 2 && r.fss["40"].by_window[w] >= r.fss["40"].fss_useful).length;
-  if (hrs > 0 && usefulScale === null) { usefulScale = KM[w]; usefulHours = hrs; }
+const dtInit = (obsOn && fcOn) ? Math.abs(obsOn.lead_h - fcOn.lead_h) : null;
+const post = L.filter(r => r.lead_h >= 2);
+function usefulAt(thr) {  // smallest neighbourhood that clears the useful line, and for how many hours
+  for (let w = 0; w < KM.length; w++) {
+    const hrs = post.filter(r => r.fss[thr].by_window[w] >= r.fss[thr].fss_useful).length;
+    if (hrs > 0) return { km: KM[w], hours: hrs, w };
+  }
+  return null;
 }
+const u40 = usefulAt("40"), u20 = usefulAt("20");
+const usefulScale = u40 ? u40.km : null, usefulHours = u40 ? u40.hours : 0;
+const hours50 = post.filter(r => r.fss["40"].by_window[3] >= r.fss["40"].fss_useful).length;
 const late = L.filter(r => r.lead_h >= 5);
 const dInt = late.reduce((s, r) => s + (r.max_dbz.forecast - r.max_dbz.observed), 0) / late.length;
-const active = L.filter(r => r.lead_h >= 4 && r.lead_h <= 14 && r.centroid_40dbz.separation_km != null).map(r => r.centroid_40dbz.separation_km).sort((a, b) => a - b);
-const medSep = active[Math.floor(active.length / 2)];
-const lateCov = L.filter(r => r.lead_h >= 11);
-const ratio40 = lateCov.reduce((s, r) => s + r.coverage["40"].forecast, 0) / lateCov.reduce((s, r) => s + r.coverage["40"].observed, 0);
-const mid = L.filter(r => r.lead_h >= 4 && r.lead_h <= 14);
-const ratio20 = mid.reduce((s, r) => s + r.coverage["20"].forecast, 0) / mid.reduce((s, r) => s + r.coverage["20"].observed, 0);
+const withSep = L.filter(r => r.lead_h >= 4 && r.lead_h <= 14 && r.centroid_40dbz.separation_km != null);
+const active = withSep.map(r => r.centroid_40dbz.separation_km).sort((a, b) => a - b);
+const medSep = active.length ? active[Math.floor(active.length / 2)] : null;
+const activeRange = withSep.length ? `${utc(withSep[0])} to ${utc(withSep[withSep.length - 1])}` : "";
+const ratio = (rows, thr) => { const o = rows.reduce((s, r) => s + r.coverage[thr].observed, 0); return o > 0 ? rows.reduce((s, r) => s + r.coverage[thr].forecast, 0) / o : null; };
+const ratio40 = ratio(L.filter(r => r.lead_h >= 11), "40");
+const ratio20 = ratio(L.filter(r => r.lead_h >= 4 && r.lead_h <= 14), "20");
+const times = (v) => (v == null ? "–" : fmt(v, v >= 10 ? 0 : 1) + "×");
 
 document.getElementById("tiles").innerHTML = [
-  ["Initiation timing", (dtInit === 0 ? "same hour" : "within " + dtInit + " h"),
-   "Both fields first exceed 0.1% of the domain at 40 dBZ at " + utc(obsOn) + " (observed) and " + utc(fcOn) + " (forecast). First SPC tornado report: 22Z."],
-  ["Useful placement at 40 dBZ", "≈" + Math.round(usefulScale) + " km",
-   "The smallest neighbourhood at which FSS clears the useful line, for " + usefulHours + " of the 17 post-spin-up hours. At 50 km and below, never."],
+  ["Initiation timing", dtInit == null ? "no storms" : (dtInit === 0 ? "same hour" : "within " + dtInit + " h"),
+   dtInit == null
+     ? "Neither field reached 0.1% of the domain at 40 dBZ in this window, so there is no initiation to time."
+     : "Both fields first exceed 0.1% of the domain at 40 dBZ at " + utc(obsOn) + " (observed) and " + utc(fcOn) + " (forecast)." + (DIXIE ? " First SPC tornado report: 22Z." : "")],
+  ["Useful placement at 40 dBZ", usefulScale == null ? "never" : "≈" + Math.round(usefulScale) + " km",
+   (usefulScale == null
+     ? "FSS never clears the useful line at any neighbourhood up to " + Math.round(KM[KM.length - 1]) + " km"
+     : "The smallest neighbourhood at which FSS clears the useful line, for " + usefulHours + " of the " + post.length + " post-spin-up hours")
+   + (hours50 > 0 ? `. At 50 km, ${hours50} h.` : ". At 50 km and below, never.")],
   ["Core intensity", (dInt >= 0 ? "+" : "") + fmt(dInt, 1) + " dBZ",
-   "Mean forecast maximum minus observed maximum, +5 h onward. The strongest forecast cores are hotter than the radar sees."],
-  ["Storm-mass offset", Math.round(medSep) + " km",
-   "Median distance between the forecast and observed centroids of all 40 dBZ cells, 22Z to 08Z. Right region, not right storm."],
+   "Mean forecast maximum minus observed maximum, +5 h onward. " + (dInt > 2 ? "The strongest forecast cores are hotter than the radar sees." : dInt < -2 ? "The forecast's strongest cores are weaker than the radar's." : "Peak intensity is about right.")],
+  ["Storm-mass offset", medSep == null ? "n/a" : Math.round(medSep) + " km",
+   medSep == null
+     ? "Too few hours had 40 dBZ mass in both fields to place centroids."
+     : "Median distance between the forecast and observed centroids of all 40 dBZ cells, " + activeRange + ". " + (medSep > 60 ? "Right region, not right storm." : "Close to storm scale.")],
 ].map(([k, v, s]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join("");
 
-document.getElementById("reading").innerHTML = `
+const readingDixie = `
 <p><strong>The timing is right.</strong> Started with essentially no echo on the analysis, the model produced its first strong cores in the same hour the radar did, and the first tornado report followed an hour later. That is the thing a convection-allowing forecast is for, and this run did it from a clean start.</p>
 <p><strong>The placement is mesoscale, not storm-scale.</strong> At the 40 dBZ threshold the forecast only reaches useful skill once the neighbourhood is about 100 km wide, and only through the mature phase, roughly 03Z to 07Z. At 50 km it approaches the line and never crosses it; at 2 km it is close to zero all night, which is expected and is precisely why gridpoint verification of a 3 km field is the wrong tool. At 20 dBZ, where the question is whether there is precipitation here at all, useful skill appears at 50 km from 22Z through 08Z.</p>
 <p><strong>The intensity is too high and the footprint too small.</strong> Two biases run in opposite directions. Above 40 dBZ the model produces ${fmt(ratio40, 1)}&times; the observed coverage from 05Z onward, and its peak values run about ${fmt(dInt, 0)} dBZ above the radar. Above 20 dBZ it produces only ${fmt(ratio20, 2)}&times; the observed coverage through the active phase. Too many hot cores and too little of the broad, moderate echo around them: the too-cellular signature that convection-allowing models, physics-based or learned, are known for.</p>
-<p><strong>The storm mass is displaced by about ${Math.round(medSep)} km.</strong> The right region, not the right county. The 06Z and 07Z hours come within ${Math.round(Math.min(...active))} km; 03Z and 05Z drift past 160.</p>
+<p><strong>The storm mass is displaced by about ${Math.round(medSep)} km.</strong> The right region, not the right county. The 06Z and 07Z hours come within ${Math.round(Math.min(...active))} km; 03Z and 05Z drift past 160.</p>`;
+
+// The generic reading says only what the numbers support, in the same order.
+const readingGeneric = `
+<p><strong>Timing.</strong> ${dtInit == null
+  ? "Neither the radar nor the forecast reached 0.1% of the domain at 40 dBZ in this window: a quiet day for strong convection, and nothing to time."
+  : `The radar first showed strong cores (0.1% of the domain at 40 dBZ) at ${utc(obsOn)}; the forecast at ${utc(fcOn)}, ${dtInit === 0 ? "the same hour" : `${dtInit} h ${fcOn.lead_h < obsOn.lead_h ? "early" : "late"}`}.`}</p>
+<p><strong>Placement.</strong> ${u40
+  ? `At 40 dBZ the forecast clears the useful line only once the neighbourhood is about ${Math.round(u40.km)} km wide, and then for ${u40.hours} of ${post.length} hours${hours50 > 0 ? `; at 50 km for ${hours50}` : "; at 50 km never"}.`
+  : `At 40 dBZ the forecast never clears the useful line at any neighbourhood up to ${Math.round(KM[KM.length - 1])} km.`}
+  ${u20 ? `At 20 dBZ, where the question is whether there is precipitation here at all, useful skill appears at ${Math.round(u20.km)} km for ${u20.hours} hours.` : "At 20 dBZ it does not reach useful skill either."}
+  At 2 km the score is near zero whatever the day, which is expected and is why gridpoint verification of a 3 km field is the wrong tool.</p>
+<p><strong>Intensity and footprint.</strong> ${ratio40 == null
+  ? "The radar had no 40 dBZ coverage from +11 h on, so there is no coverage ratio to report at that threshold."
+  : `Above 40 dBZ the forecast covers ${times(ratio40)} the observed area from +11 h on, and its peak values run ${dInt >= 0 ? "+" : ""}${fmt(dInt, 0)} dBZ against the radar.`}
+  ${ratio20 == null ? "" : `Above 20 dBZ it covers ${times(ratio20)} the observed area through the active phase.`}
+  ${ratio40 != null && ratio20 != null && ratio40 > 1.2 && ratio20 < 0.9 ? "Too many hot cores and too little of the broad, moderate echo around them: the too-cellular signature convection-allowing models, physics-based or learned, are known for." : ""}</p>
+<p><strong>Storm mass.</strong> ${medSep == null
+  ? "Too few hours had 40 dBZ mass in both fields to place centroids."
+  : `The forecast and observed centroids of the 40 dBZ mass sit a median ${Math.round(medSep)} km apart through ${activeRange}, closest at ${Math.round(Math.min(...active))} km. ${medSep > 60 ? "The right region, not the right county." : "Close to storm scale."}`}</p>`;
+
+document.getElementById("reading").innerHTML = (DIXIE ? readingDixie : readingGeneric) + `
 <p><strong>What this is not.</strong> ${R.members ? "One night. The ensemble above scores the model the way it is meant to be used, but a single outbreak is a single case, not a climatology of skill." : "One realisation from a probabilistic model, scored on one night. An ensemble is the honest next step, and it would also make the FSS numbers comparable to how StormCast is meant to be used."} The MRMS composite is itself a processed product, and the resampling to the display grid is nearest-cell. None of that changes the shape of the result.</p>`;
 
 function svgEl(tag, attrs, text) {
@@ -236,7 +291,10 @@ function svgEl(tag, attrs, text) {
   if (text != null) e.textContent = text;
   return e;
 }
-const SPC = [{ lead: 4, text: "first tornado report" }, { lead: 10, text: "peak reports 04–05Z" }];
+// Event annotations on the time axis: the Dixie outbreak's SPC report timeline.
+// A daily run has no such record, so it gets none.
+const SPC = DIXIE ? [{ lead: 4, text: "first tornado report" }, { lead: 10, text: "peak reports 04–05Z" }] : [];
+const axisSpan = `valid time, UTC (${utc(L[0])} ${shortDay(L[0].valid)} to ${utc(L[L.length - 1])} ${shortDay(L[L.length - 1].valid)})`;
 
 function lineChart(hostId, { series, yMax, yTicks, yFmt, baseline, annotate, band, thin, height = 300, width = 860, tip }) {
   const host = document.getElementById(hostId);
@@ -256,7 +314,7 @@ function lineChart(hostId, { series, yMax, yTicks, yFmt, baseline, annotate, ban
   svg.appendChild(ax);
   for (const t of yTicks) svg.appendChild(svgEl("text", { x: ml - 6, y: y(t) + 4, "text-anchor": "end" }, yFmt(t)));
   for (let i = 0; i < n; i += (W < 600 ? 4 : 2)) svg.appendChild(svgEl("text", { x: x(i), y: H - 12, "text-anchor": "middle" }, utc(L[i])));
-  svg.appendChild(svgEl("text", { x: ml + iw / 2, y: H - 1, "text-anchor": "middle" }, W < 600 ? "valid time, UTC" : "valid time, UTC (18Z 14 Mar to 12Z 15 Mar)"));
+  svg.appendChild(svgEl("text", { x: ml + iw / 2, y: H - 1, "text-anchor": "middle" }, W < 600 ? "valid time, UTC" : axisSpan));
   if (annotate) for (const a of SPC) {
     svg.appendChild(svgEl("line", { class: "ann-line", x1: x(a.lead), x2: x(a.lead), y1: mt, y2: y(0) }));
     svg.appendChild(svgEl("text", { class: "ann", x: x(a.lead) + 4, y: mt + 10 }, a.text));
@@ -360,7 +418,7 @@ if (M) {
   const spread98 = post.filter(r => r.lead_h >= 4).map(r => { const v = r.fss["40"].member_by_window.map(m => m[4]).filter(Number.isFinite); return v.length ? Math.max(...v) - Math.min(...v) : NaN; }).filter(Number.isFinite);
   const meanSpread = spread98.reduce((s, v) => s + v, 0) / spread98.length;
 
-  document.getElementById("ens-intro").innerHTML = `${M} StormCast members from the same 18Z HRRR analysis and the same GFS conditioning; only the diffusion sampler's random seed differs between them. The fraction of members at or above 40 dBZ in each cell is a forecast in its own right, and it is scored here as one, with the probabilistic form of the FSS against the same radar. This is the form StormCast is meant to be used in, and the live site shows that probability field as its own layer.`;
+  document.getElementById("ens-intro").innerHTML = `${M} StormCast members from the same ${initH} HRRR analysis and the same GFS conditioning; only the diffusion sampler's random seed differs between them. The fraction of members at or above 40 dBZ in each cell is a forecast in its own right, and it is scored here as one, with the probabilistic form of the FSS against the same radar. This is the form StormCast is meant to be used in, and the live site shows that probability field as its own layer.`;
 
   document.getElementById("ens-tiles").innerHTML = [
     ["Useful hours at 50 km", `${hoursUseful(3, ensU)} vs ${hoursUseful(3, detU)}`, `Hours the probability field clears the useful line at the 50 km neighbourhood, against the single run, of ${post.length} post-spin-up hours.`],
@@ -426,5 +484,10 @@ T.innerHTML = `<thead><tr><th>valid</th><th>obs ≥40</th><th>fc ≥40</th>${WIN
     `<td>${fmt(s.fss_useful, 3)}</td>` +
     (M ? ENS_WIN.map(w => { const v = s.ensemble_by_window[w]; return `<td class="${v >= s.fss_useful ? "use" : ""}">${fmt(v, 3)}</td>`; }).join("") : "") +
     `<td>${r.centroid_40dbz.separation_km == null ? "–" : Math.round(r.centroid_40dbz.separation_km)}</td><td>${Math.round(r.max_dbz.forecast)}/${Math.round(r.max_dbz.observed)}</td></tr>`; }).join("")}</tbody>`;
-document.getElementById("stamp").textContent = (M ? "Scored 31 August 2026, ensemble added 2 September 2026" : "Scored 31 August 2026") + " · teal cells clear the useful line";
+document.getElementById("m-init").textContent = initH;
+document.getElementById("m-grid").innerHTML = `${R.grid.size[0]}&times;${R.grid.size[1]}`;
+document.getElementById("m-px").textContent = R.grid.km_per_px.toFixed(2);
+if (EV.mrms_worst_offset_s != null) document.getElementById("m-offset").textContent = Math.round(EV.mrms_worst_offset_s);
+const scoredOn = EV.scored_at ? `Scored ${longDate(new Date(EV.scored_at))}` : (M ? "Scored 31 August 2026, ensemble added 2 September 2026" : "Scored 31 August 2026");
+document.getElementById("stamp").textContent = scoredOn + " · teal cells clear the useful line";
 </script>
