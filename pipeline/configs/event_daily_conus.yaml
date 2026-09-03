@@ -1,0 +1,34 @@
+# THE DAILY RUN — StormCast from the latest HRRR analysis, every day.
+#
+# One config for every day: the launcher hands the cycle in with --init (the
+# forecast, the encoder and the MRMS fetch all take it), so nothing here is
+# date-specific. `init` below is a placeholder that keeps the config valid on
+# its own; a run that forgot --init would forecast a stale day, and the pod
+# script refuses to start without one.
+#
+# 12Z is the cycle: HRRR analysis and the same-cycle GFS conditioning out to
+# +18 h are complete about four hours later, so the forecast is on the site by
+# roughly 17Z, and the window runs through the afternoon and evening convective
+# peak into the night. The day after, the pod scores this window against MRMS
+# and re-encodes it with the observed radar and the verification page.
+init: "2026-01-01T12:00:00"
+nsteps: 18            # hourly -> 06Z next day
+
+hero_variables: [u10m, v10m, t2m, refc]
+coarse_variables: [u10m, v10m, t2m, tcwv, msl]
+
+seed: 1200
+output: /out/daily.zarr
+
+storm_name: "Live StormCast run"
+place_label: "Central US · StormCast 3 km domain"
+# 10 = 22Z: the late-afternoon convective peak for a 12Z init. The peak of a
+# given day is unknown when this ships; the verification pass finds it after.
+hero_frame: 10
+
+# What kind of run THIS is. encode_stormcast appends it to the caveat verbatim and
+# claims nothing when it is absent — never inherit another event's framing.
+framing_note: >-
+  This run was made from the most recent analysis available, hours before the
+  weather it describes. It is scored against radar the following day and the
+  verification is published beside it, whatever it says.

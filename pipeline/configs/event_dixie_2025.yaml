@@ -43,3 +43,9 @@ place_label: "Central US · StormCast 3 km domain"
 # 4 = 04Z, the hour with the most tornado reports (24) and the Diaz EF4 at 04:13Z.
 # TUNE after the run: pick the most developed frame from the real fields.
 hero_frame: 4
+
+# What kind of run THIS is. encode_stormcast appends it to the caveat verbatim and
+# claims nothing when it is absent — never inherit another event's framing.
+framing_note: >-
+  This is a hindcast of the 14-15 March 2025 outbreak, run after the fact:
+  the outcome is known, and the point is what the model produces.

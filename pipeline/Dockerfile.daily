@@ -1,0 +1,35 @@
+# The daily-run image: the StormCast image plus everything the pod needs to
+# finish the job on its own — encode the event, fetch MRMS, score yesterday,
+# render the report — so nothing heavy ever comes back to a laptop.
+#
+#   DOCKERFILE=Dockerfile.daily BASE_TAG=0.17.0-stormcast TAG=0.17.0-daily ./build-image-remote.sh
+#
+# Layout mirrors the repo under /opt/latentsky so the package's relative paths
+# (pipeline/luts, pipeline/assets, schema/) resolve exactly as they do here.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+WORKDIR /opt/latentsky
+
+# Encoder + verification deps. eccodes (python) rides on the libeccodes-dev the
+# base image already installs for GRIB decoding. No colormap libraries: the LUTs
+# are baked and committed (pipeline/luts), and the encoder only ever reads them.
+RUN uv add pillow scipy jsonschema eccodes
+
+COPY src/            /opt/latentsky/pipeline/src/
+COPY tools/          /opt/latentsky/pipeline/tools/
+COPY configs/        /opt/latentsky/pipeline/configs/
+COPY luts/           /opt/latentsky/pipeline/luts/
+COPY assets/         /opt/latentsky/pipeline/assets/
+COPY schema/         /opt/latentsky/schema/
+COPY pod_daily.sh    /opt/latentsky/pod_daily.sh
+
+# The forecast script stays importable from the package tree; the old flat
+# path is kept so the manual pod scripts (SCRIPT_B64 + FORECAST_B64) still work.
+RUN cp /opt/latentsky/pipeline/src/latentsky/forecast_stormcast.py /opt/latentsky/forecast_stormcast.py
+
+# Prove the whole chain imports here, not on a billed GPU minute.
+RUN uv run python -c "import eccodes, PIL, scipy, jsonschema; import sys; sys.path.insert(0, '/opt/latentsky/pipeline/src'); from latentsky import encode_stormcast, verify, catalogue, basemap; print('daily image imports OK')"
+
+ENV PYTHONPATH=/opt/latentsky/pipeline/src
+ENTRYPOINT ["/bin/bash", "/opt/latentsky/pod_daily.sh"]

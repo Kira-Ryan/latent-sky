@@ -36,3 +36,9 @@ hero_frame: 10
 # The verification page for this run, published beside the site by the deploy
 # (data/verification/pages -> /verification). The caveat links it.
 report: /verification/stormcast-dixie-2025.html
+
+# What kind of run THIS is. encode_stormcast appends it to the caveat verbatim and
+# claims nothing when it is absent — never inherit another event's framing.
+framing_note: >-
+  This is a hindcast of the 14-15 March 2025 outbreak, run after the fact:
+  the outcome is known, and the point is what the model produces.

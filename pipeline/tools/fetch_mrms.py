@@ -77,12 +77,13 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--out", type=pathlib.Path, required=True)
     ap.add_argument("--box", type=float, nargs=4, metavar=("S", "N", "W", "E"), default=DEFAULT_BOX,
                     help="crop box, degrees, east longitudes (default: StormCast v1 window + margin)")
+    ap.add_argument("--init", default=None, help="override the config's init (ISO) — the daily run")
     args = ap.parse_args(argv)
 
     import eccodes  # deferred: the rest of the pipeline must not need it
 
     cfg = yaml.safe_load(args.event_config.read_text(encoding="utf-8"))
-    init = datetime.fromisoformat(cfg["init"])
+    init = datetime.fromisoformat(args.init if args.init is not None else cfg["init"])
     nsteps = int(cfg["nsteps"])
     plan = plan_frames(init, nsteps)
     worst = max(abs(p["offset_s"]) for p in plan)

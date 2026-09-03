@@ -57,8 +57,13 @@ fi
 
 # ── Stage the build context (Dockerfile + configs + the two copied files) ──────
 echo "staging build context to s3://$BUCKET/build/context.tar.gz…"
-tar czf /tmp/latentsky-context.tar.gz -C ../../pipeline \
-  Dockerfile Dockerfile.bake configs src/latentsky/forecast.py tools/bake_models.py
+# The daily image (Dockerfile.daily) carries the whole pipeline package plus the
+# manifest schema it validates against, so the context is the pipeline tree and
+# schema/ from the repo root (the second -C is relative to the first).
+tar czf /tmp/latentsky-context.tar.gz --exclude='__pycache__' --exclude='.pytest_cache' \
+  -C ../../pipeline \
+  Dockerfile Dockerfile.bake Dockerfile.daily pod_daily.sh configs src tools luts assets \
+  -C .. schema
 aws s3 cp /tmp/latentsky-context.tar.gz "s3://$BUCKET/build/context.tar.gz" --region "$REGION" --only-show-errors
 echo "context: $(wc -c < /tmp/latentsky-context.tar.gz) bytes"
 

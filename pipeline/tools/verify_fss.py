@@ -45,6 +45,10 @@ def main(argv: list[str] | None = None) -> None:
                     help="which prose the report renders: the Dixie case study, or the generic "
                          "data-driven reading a daily run gets")
     ap.add_argument("--live-url", default=None, help="where the run is on the site")
+    ap.add_argument("--hero-is-member", type=int, default=None, metavar="K",
+                    help="the --hero-zarr store IS member K, not a separate execution. Suppresses "
+                         "the reproducibility comparison, which would otherwise compare a store "
+                         "with itself and report a perfect match as if it meant something")
     args = ap.parse_args(argv)
 
     hero = zarr.open(str(args.hero_zarr), mode="r")
@@ -104,12 +108,24 @@ def main(argv: list[str] | None = None) -> None:
         "scored_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "mrms_worst_offset_s": float(np.abs(offsets).max()),
     }
-    if members is not None:
-        # Member 0 was run with the single run's seed in a separate execution; how
-        # far apart they are is a reproducibility fact worth reporting, not assuming.
+    # Reproducibility is only a fact when there were two executions. If the scored
+    # "single run" is one of the members — the daily pipeline points --hero-zarr at
+    # member 0, and a symlink makes that easy to miss — comparing them measures
+    # nothing, and reporting the inevitable zero would be a fabricated check.
+    hero_resolved = args.hero_zarr.resolve()
+    hero_is_member = args.hero_is_member
+    if hero_is_member is None:
+        for k, p in enumerate(args.member):
+            if p.resolve() == hero_resolved:
+                hero_is_member = k
+                break
+    if members is not None and hero_is_member is None:
         both = np.isfinite(fc) & np.isfinite(members[0])
         results["member0_vs_single_max_abs_diff"] = float(np.abs(members[0][both] - fc[both]).max())
         print(f"member 0 vs single run: max |diff| = {results['member0_vs_single_max_abs_diff']:.3f} dBZ")
+    elif members is not None:
+        results["hero_is_member"] = int(hero_is_member)
+        print(f"the scored run IS member {hero_is_member}; no reproducibility claim is made")
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(results, indent=1), encoding="utf-8")
 

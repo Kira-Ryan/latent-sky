@@ -473,7 +473,17 @@ if (M) {
 
   const seeds = R.member_seeds ?? [];
   const d0 = R.member0_vs_single_max_abs_diff;
-  document.getElementById("m-real").textContent = `${M} realisations` + (seeds.length ? ` (seeds ${seeds[0]} to ${seeds[seeds.length - 1]})` : "") + `. The single run above was a separate execution with the first member's seed` + (d0 == null ? "" : d0 === 0 ? `, and member 0 reproduces it exactly` : `; member 0 differs from it by up to ${fmt(d0, 2)} dBZ`);
+  const heroIsMember = R.hero_is_member;
+  document.getElementById("m-real").textContent =
+    `${M} realisations` + (seeds.length ? ` (seeds ${seeds[0]} to ${seeds[seeds.length - 1]})` : "") +
+    (heroIsMember != null
+      // The deterministic column IS one of the members. Say so: a comparison of a
+      // store with itself is not a reproducibility check and is not reported as one.
+      ? `. The single-run column above is member ${heroIsMember} itself, shown for contrast with the ensemble, not as an independent execution`
+      : d0 == null
+        ? `. The single run above was a separate execution`
+        : `. The single run above was a separate execution with the first member's seed` +
+          (d0 === 0 ? `, and member 0 reproduces it exactly` : `; member 0 differs from it by up to ${fmt(d0, 2)} dBZ`));
   document.getElementById("m-cav").textContent = `${M} diffusion samples is a small ensemble; the probability field is coarse in steps of ${(100 / M).toFixed(1)}%.`;
 }
 

@@ -106,12 +106,15 @@ def main() -> None:
     ap.add_argument("--members", type=int, default=None,
                     help="ensemble size; overrides config `members` (default 1). Member k "
                          "reseeds with seed+k and writes <out>_m{k:02d}_hero.zarr")
+    ap.add_argument("--init", default=None,
+                    help="override config init (ISO, e.g. 2026-09-03T12:00) — the daily run "
+                         "hands the cycle in rather than writing a config per day")
     args = ap.parse_args()
 
     with open(args.config) as fh:
         cfg = yaml.safe_load(fh)
 
-    init = datetime.fromisoformat(cfg["init"])
+    init = datetime.fromisoformat(args.init if args.init is not None else cfg["init"])
     nsteps: int = args.nsteps if args.nsteps is not None else cfg["nsteps"]
     coarse_vars: list[str] = cfg["coarse_variables"]
     hero_vars: list[str] = cfg["hero_variables"]
