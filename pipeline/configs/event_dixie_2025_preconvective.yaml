@@ -32,3 +32,7 @@ storm_name: "14 March 2025 tornado outbreak"
 place_label: "Central US · StormCast 3 km domain"
 # 10 = 04Z, the peak report hour, at lead +10 h from this init.
 hero_frame: 10
+
+# The verification page for this run, published beside the site by the deploy
+# (data/verification/pages -> /verification). The caveat links it.
+report: /verification/stormcast-dixie-2025.html

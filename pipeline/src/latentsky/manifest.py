@@ -45,6 +45,7 @@ _HINT_KEYS = {
     "storm_name": "stormName",
     "hero_frame": "heroFrame",
     "place_label": "placeLabel",
+    "report": "reportUrl",
 }
 
 

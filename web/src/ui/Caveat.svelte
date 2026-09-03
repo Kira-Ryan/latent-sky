@@ -9,7 +9,16 @@
 <div class="caveat">
   <div>
     <span class="caveat-label">About this data</span>
-    <p class="caveat-text">{sky.manifest?.run.generatedNote}</p>
+    <p class="caveat-text">
+      {sky.manifest?.run.generatedNote}
+      {#if sky.manifest?.run.reportUrl}
+        <!-- The numbers behind the pictures: the run's verification against
+             observations, published beside the site rather than claimed here. -->
+        <a class="report" href={sky.manifest.run.reportUrl} target="_blank" rel="noopener noreferrer">
+          How well did it do? Read the verification.
+        </a>
+      {/if}
+    </p>
   </div>
   <address class="contact">
     <span class="caveat-label">Built by</span>
@@ -62,6 +71,19 @@
 
   .contact .caveat-text {
     white-space: nowrap;
+  }
+
+  .report {
+    color: var(--text-dim);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+    white-space: nowrap;
+  }
+
+  .report:hover,
+  .report:focus-visible {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
   }
 
   .contact a {

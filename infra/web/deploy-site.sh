@@ -150,6 +150,17 @@ rm -rf "$DIST/data"
 mkdir -p "$DIST/data"
 cp -R "$DATA_SRC" "$DIST/data/web"
 
+# Verification reports are standalone HTML pages (pipeline/tools/fss_report.py
+# --site-out) served at /verification/<name>.html. They change whenever a run is
+# re-scored, so they are no-cache like the entry points, never immutable.
+PAGES_SRC="$REPO/data/verification/pages"
+rm -rf "$DIST/verification"
+if [[ -d "$PAGES_SRC" ]]; then
+  say "── staging $PAGES_SRC -> $DIST/verification"
+  mkdir -p "$DIST/verification"
+  cp "$PAGES_SRC"/*.html "$DIST/verification/"
+fi
+
 python - "$DIST/data/web" <<'PYGUARD'
 import json, pathlib, sys
 root = pathlib.Path(sys.argv[1]).resolve()
@@ -433,9 +444,21 @@ for rel in "${ENTRY_RELS[@]}"; do
     --content-type "application/json" --cache-control "$NOCACHE_CC" --only-show-errors
 done
 
+PAGE_RELS=()
+if [[ -d "$DIST/verification" ]]; then
+  for f in "$DIST"/verification/*.html; do
+    [[ -f "$f" ]] || continue
+    PAGE_RELS+=("verification/${f##*/}")
+    aws_mutate s3 cp "$f" "s3://$SITE_BUCKET/verification/${f##*/}" --region "$REGION" \
+      --content-type "text/html" --cache-control "$NOCACHE_CC" --only-show-errors
+  done
+  say "── upload: verification pages (no-cache): ${PAGE_RELS[*]:-none}"
+fi
+
 # ── 7. Invalidation — the entry points ONLY, never /* ──────────────────────────
 INVAL_PATHS=("/index.html")
 for rel in "${ENTRY_RELS[@]}"; do INVAL_PATHS+=("/data/web/$rel"); done
+for rel in "${PAGE_RELS[@]}"; do INVAL_PATHS+=("/$rel"); done
 say "── invalidation: ${INVAL_PATHS[*]}"
 # MSYS_NO_PATHCONV: Git Bash rewrites leading-slash args into Windows paths for
 # native exes — "/index.html" reached CloudFront as "C:/Program Files/Git/index.html"
@@ -489,6 +512,9 @@ verify_one "root (default root object)" "/" "text/html"
 verify_one "index.html" "/index.html" "text/html" "no-cache"
 verify_one "manifest.json" "/data/web/manifest.json" "application/json" "no-cache"
 verify_one "webp frame ($FRAME_REL)" "/data/web/$FRAME_REL" "image/webp" "immutable"
+for rel in "${PAGE_RELS[@]}"; do
+  verify_one "verification page ($rel)" "/$rel" "text/html" "no-cache"
+done
 
 # Compression check (§9.2): second request, after the first has warmed the edge.
 say "· content-encoding on /index.html (request twice; check the second)"

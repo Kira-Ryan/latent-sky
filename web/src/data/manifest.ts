@@ -25,6 +25,8 @@ export interface RunInfo {
   heroFrame?: number;
   /** Human label for the hero domain, e.g. "Taiwan · CWA model domain". */
   placeLabel?: string;
+  /** This run's verification report page, when one has been published. */
+  reportUrl?: string;
 }
 
 export interface LayerDef {
@@ -156,6 +158,7 @@ export function parseManifest(raw: unknown, baseUrl: URL): Manifest {
     stormName: runRaw.stormName === undefined ? undefined : requireString(runRaw.stormName, "$.run.stormName"),
     heroFrame: runRaw.heroFrame === undefined ? undefined : requireIndex(runRaw.heroFrame, "$.run.heroFrame"),
     placeLabel: runRaw.placeLabel === undefined ? undefined : requireString(runRaw.placeLabel, "$.run.placeLabel"),
+    reportUrl: runRaw.reportUrl === undefined ? undefined : requireString(runRaw.reportUrl, "$.run.reportUrl"),
   };
 
   if (!Array.isArray(root.frames) || root.frames.length < 1) fail("$.frames", "expected non-empty array");

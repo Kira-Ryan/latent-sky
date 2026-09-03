@@ -158,7 +158,9 @@ def test_dev_hints_are_the_specified_values():
 def test_every_event_config_carries_consistent_hints(path):
     cfg = yaml.safe_load(path.read_text(encoding="utf-8"))
     hints = manifest.run_hints(cfg)
-    assert set(hints) == {"stormName", "heroFrame", "placeLabel"}, (
+    assert {"stormName", "heroFrame", "placeLabel"} <= set(hints) <= {
+        "stormName", "heroFrame", "placeLabel", "reportUrl"
+    }, (
         f"{path.name}: every event config must carry all three run hints"
     )
     assert hints["stormName"].strip(), f"{path.name}: stormName must not be blank"
@@ -187,3 +189,7 @@ def test_event_configs_exist():
         cfg = yaml.safe_load(path.read_text(encoding="utf-8"))
         for key in ("init", "nsteps", "coarse_variables", "output"):
             assert key in cfg, f"{path.name}: missing required key {key!r}"
+
+
+def test_report_becomes_report_url():
+    assert manifest.run_hints({"report": "/verification/x.html"}) == {"reportUrl": "/verification/x.html"}
