@@ -80,6 +80,7 @@ cd "$(dirname "$0")"
 
 REGION=${REGION:-us-east-1}
 SITE_BUCKET="latentsky-site-${LATENTSKY_AWS_ACCOUNT}"
+NATIVE_TMP_EARLY="$( (command -v cygpath >/dev/null 2>&1 && cygpath -m "${TEMP:-/tmp}") || echo /tmp )"
 ORIGIN_DOMAIN="${SITE_BUCKET}.s3.${REGION}.amazonaws.com"   # S3 REST endpoint — never -website
 OAC_NAME="latentsky-site-oac"
 DIST_COMMENT="latentsky-site"
@@ -150,6 +151,11 @@ rm -rf "$DIST/data"
 mkdir -p "$DIST/data"
 cp -R "$DATA_SRC" "$DIST/data/web"
 
+# The merge with the live catalogue's daily runs happens LATER, immediately
+# before the catalogue is uploaded — see "merge the live daily runs" below. Doing
+# it here would open a window the length of the whole deploy in which a daily
+# publish could land and be overwritten.
+
 # Verification reports are standalone HTML pages (pipeline/tools/fss_report.py
 # --site-out) served at /verification/<name>.html. They change whenever a run is
 # re-scored, so they are no-cache like the entry points, never immutable.
@@ -173,11 +179,20 @@ root = pathlib.Path(sys.argv[1]).resolve()
 # resolves them against the manifest URL.
 targets = [pathlib.Path("manifest.json")]
 catalogue = root / "catalogue.json"
+skipped = []
 if catalogue.is_file():
     for event in json.loads(catalogue.read_text(encoding="utf-8")).get("events", []):
         rel = pathlib.Path(event["manifest"])
+        # Daily runs are published straight into the bucket by infra/daily and are
+        # never staged here; their manifests were schema-validated by the encoder
+        # in the pod, and nothing NC-ND can reach that path.
+        if event["id"].startswith("daily-"):
+            skipped.append(event["id"])
+            continue
         if rel not in targets:
             targets.append(rel)
+if skipped:
+    print(f"daily runs not audited (live only): {skipped}")
 
 problems, summary = [], []
 for rel in targets:
@@ -420,6 +435,8 @@ rels.append("manifest.json")
 cat = root / "catalogue.json"
 if cat.is_file():
     for event in json.loads(cat.read_text(encoding="utf-8")).get("events", []):
+        if event["id"].startswith("daily-"):
+            continue  # lives only in the bucket, already no-cache; not re-uploaded here
         if event["manifest"] not in rels:
             rels.append(event["manifest"])
 for rel in rels:
@@ -433,6 +450,52 @@ PYENTRY
 # strips the literal characters $'\r' and silently changes nothing.
 CR=$'\r'
 ENTRY_RELS=("${ENTRY_RELS[@]%$CR}")
+
+# ── merge the live daily runs into the catalogue, as late as possible ─────────
+# infra/daily publishes daily-* events straight into the bucket; the repo never
+# holds them. A deploy that uploaded only the repo catalogue would erase every
+# live run from the site. This runs immediately before the upload so the window
+# in which a concurrent daily publish could be lost is seconds, not minutes.
+#
+# A FETCH FAILURE IS NOT "no daily runs". Only a definite 404 means the catalogue
+# is genuinely absent (a first deploy); anything else — expired credentials, a
+# network blip, a typo in the bucket name — must stop the deploy, because
+# continuing would silently wipe the live runs off latent-sky.dev.
+say "── merging live daily runs into the staged catalogue"
+LIVE_CAT="$NATIVE_TMP_EARLY/latentsky-live-catalogue.json"
+rm -f "$LIVE_CAT"
+if HEAD_ERR=$(aws s3api head-object --bucket "$SITE_BUCKET" --key data/web/catalogue.json \
+                --region "$REGION" 2>&1 >/dev/null); then
+  aws s3api get-object --bucket "$SITE_BUCKET" --key data/web/catalogue.json \
+    --region "$REGION" "$LIVE_CAT" >/dev/null \
+    || { say "REFUSING: the live catalogue exists but could not be downloaded — deploying now would erase every daily run from the site"; exit 1; }
+  python - "$DIST/data/web/catalogue.json" "$LIVE_CAT" <<'PYMERGE'
+import json, pathlib, sys
+repo_path, live_path = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+repo = json.loads(repo_path.read_text(encoding="utf-8"))
+live = json.loads(live_path.read_text(encoding="utf-8"))
+dailies = [e for e in live.get("events", []) if e["id"].startswith("daily-")]
+if not dailies:
+    print("catalogue: the live site has no daily runs; repo catalogue used as is")
+    raise SystemExit(0)
+dailies.sort(key=lambda e: e["id"], reverse=True)
+curated = [dict(e, default=False) for e in repo["events"] if not e["id"].startswith("daily-")]
+merged = [dict(e, default=False) for e in dailies] + curated
+merged[0]["default"] = True
+ids = [e["id"] for e in merged]
+mans = [e["manifest"] for e in merged]
+if len(set(ids)) != len(ids) or len(set(mans)) != len(mans):
+    raise SystemExit(f"REFUSING: merged catalogue has duplicate ids or manifests: {ids}")
+repo["events"] = merged
+repo_path.write_text(json.dumps(repo, indent=2) + "\n", encoding="utf-8")
+print(f"catalogue: carried {len(dailies)} live daily run(s) over: {[e['id'] for e in dailies]}")
+PYMERGE
+elif grep -qi "Not Found\|404" <<<"$HEAD_ERR"; then
+  say "no catalogue on the site yet (first deploy) — nothing to merge"
+else
+  say "REFUSING: could not determine whether a live catalogue exists: $HEAD_ERR"
+  exit 1
+fi
 
 say "── upload: no-cache entry points (last, so their metadata wins): index.html ${ENTRY_RELS[*]}"
 aws_mutate s3 cp "$DIST/index.html" "s3://$SITE_BUCKET/index.html" --region "$REGION" \
