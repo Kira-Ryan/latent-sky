@@ -224,14 +224,25 @@ deploy_function latentsky-daily-publish lambda_publish 300 1024 "$ENV_PUBLISH"
 deploy_function latentsky-daily-check   lambda_check   180 256  "$ENV_CHECK"
 
 # The launcher spends money, so it gets belt and braces against double-firing:
-# one invocation at a time, and no automatic retry of an async invocation that
-# already created a pod before failing.
-say "── launcher: reserved concurrency 1, zero async retries"
-aws_mutate lambda put-function-concurrency --function-name latentsky-daily-launch \
-  --reserved-concurrent-executions 1 --region "$REGION" --query 'ReservedConcurrentExecutions' --output text
+# no automatic retry of an async invocation that already created a pod before
+# failing, and — where the account allows it — one invocation at a time.
+say "── launcher: zero async retries, reserved concurrency 1"
 aws_mutate lambda put-function-event-invoke-config --function-name latentsky-daily-launch \
   --maximum-retry-attempts 0 --maximum-event-age-in-seconds 300 --region "$REGION" \
   --query 'MaximumRetryAttempts' --output text
+# A brand-new account has a total concurrency quota of 10, and AWS refuses to let
+# reservations take the unreserved pool below that, so this call fails with
+# InvalidParameterValueException. It is defence in depth, not the guarantee: the
+# launcher claims the day in S3 BEFORE it creates a pod, so even two truly
+# simultaneous invocations cannot both spend. Warn and carry on.
+if ! aws_mutate lambda put-function-concurrency --function-name latentsky-daily-launch \
+     --reserved-concurrent-executions 1 --region "$REGION" \
+     --query 'ReservedConcurrentExecutions' --output text 2>/dev/null; then
+  say "NOTE: could not reserve concurrency (account quota is too small for a reservation)."
+  say "      The once-per-day guarantee still holds — it comes from the S3 claim written"
+  say "      before any pod is created, not from this. To add the extra layer, raise the"
+  say "      Lambda concurrent-executions quota above 10 and re-run."
+fi
 
 # ── 5. Schedules, created DISABLED ────────────────────────────────────────
 schedule() {  # rule function expression input_json
