@@ -129,6 +129,43 @@ def merge_catalogue(catalogue: dict, entry: dict, keep: int = DAILY_KEEP) -> dic
     return {"schemaVersion": catalogue.get("schemaVersion", 1), "events": merged}
 
 
+def index_row(date: str, manifest: dict, fss: dict | None, verified: bool) -> dict:
+    """One row of the verification record for this daily run.
+
+    A row exists from the day the run is published, unscored, because the record
+    is of every run rather than only the flattering ones. `scored` is driven by
+    the report actually being there, so the index can never offer a link to a
+    page that failed to upload.
+    """
+    init = manifest["run"].get("init") or manifest["frames"][0]
+    when = dt.datetime.fromisoformat(init.replace("Z", "+00:00"))
+    return {
+        "id": f"daily-{date}",
+        "title": f"Central US, {when:%H}Z {when.day} {when:%b %Y}",
+        "init": init,
+        "scored": bool(verified),
+        "liveUrl": f"https://latent-sky.dev/?event=daily-{date}",
+        "members": manifest["run"].get("members") or 1,
+        "reportUrl": f"/verification/daily-{date}.html" if verified else None,
+        "headline": (fss or {}).get("headline") if verified else None,
+    }
+
+
+def merge_index(index: dict, row: dict, keep: int = 400) -> dict:
+    """Replace or insert one row, newest first. Pure, so it can be tested."""
+    runs = [r for r in index.get("runs", []) if r.get("id") != row["id"]] + [row]
+    runs.sort(key=lambda r: str(r.get("init") or ""), reverse=True)
+    runs = runs[:keep]
+    if row["id"] not in {r["id"] for r in runs}:
+        runs = runs[:-1] + [row]
+    if row["scored"] and not row.get("reportUrl"):
+        raise ValueError("a scored row must name its report")
+    ids = [r["id"] for r in runs]
+    if len(set(ids)) != len(ids):
+        raise ValueError(f"duplicate ids in the verification record: {ids}")
+    return {"schemaVersion": index.get("schemaVersion", 1), "runs": runs}
+
+
 def dropped_dailies(before: dict, after: dict) -> list[str]:
     """Daily ids present before the merge and gone after it (rolled off the window)."""
     b = {e["id"] for e in before.get("events", []) if e["id"].startswith("daily-")}
@@ -203,6 +240,28 @@ def update_catalogue(entry: dict) -> tuple[dict, dict]:
                        f"deploy-site.sh running at the same time")
 
 
+def update_index(row: dict) -> list[str]:
+    """Read-merge-write the verification record, then confirm the row survived.
+
+    Same shape and same reasoning as update_catalogue: no compare-and-swap on S3,
+    so a concurrent writer can lose our row between the read and the write, and a
+    silent loss would mean a scored run that the index never lists.
+    """
+    key = "verification/index.json"
+    for attempt in (1, 2, 3):
+        try:
+            before = read_site_json(key)
+        except Exception:
+            before = {"schemaVersion": 1, "runs": []}
+        write_site_json(key, merge_index(before, row))
+        time.sleep(1)
+        confirm = read_site_json(key)
+        if any(r.get("id") == row["id"] for r in confirm.get("runs", [])):
+            return [r["id"] for r in confirm["runs"]]
+        print(f"verification record write lost to a concurrent writer (attempt {attempt}); retrying")
+    raise RuntimeError(f"the verification record kept losing {row['id']}")
+
+
 def invalidate(paths: list[str]) -> str:
     resp = cf.create_invalidation(
         DistributionId=DISTRIBUTION_ID,
@@ -241,7 +300,19 @@ def publish_site(date: str, key: str, verified: bool) -> dict:
     tar_bytes = s3.get_object(Bucket=DATA_BUCKET, Key=key)["Body"].read()
     manifest = upload_tree(tar_bytes, date)
     before, after = update_catalogue(daily_entry(date, manifest, verified))
-    paths = ["/data/web/catalogue.json", f"/data/web/daily/{date}/manifest.json"]
+    # The verification record lists every run from the day it is published, so a
+    # reader sees the whole series rather than only the days that scored well.
+    # A scored row reads its headline from the results the pod uploaded, which
+    # pod_daily.sh always PUTs before the site tar, so the figure exists by then.
+    fss = None
+    if verified:
+        try:
+            fss = json.loads(s3.get_object(Bucket=DATA_BUCKET, Key=f"daily/{date}/fss.json")["Body"].read())
+        except Exception as exc:
+            print(f"{date}: no results file for the index row ({type(exc).__name__})")
+    listed = update_index(index_row(date, manifest, fss, verified))
+    print(f"verification record now lists {len(listed)} run(s)")
+    paths = ["/data/web/catalogue.json", f"/data/web/daily/{date}/manifest.json", "/verification/index.json"]
     result = {"date": date, "verified": verified, "invalidation": invalidate(paths),
               "events": [e["id"] for e in after["events"]], "rolled_off": dropped_dailies(before, after)}
     marker = f"daily/{date}/{'scored.json' if verified else 'published.json'}"

@@ -78,3 +78,93 @@ def test_catalogue_rules_still_hold():
     bad = {"events": CURATED["events"] + [dict(CURATED["events"][1], id="dup-manifest")]}
     with pytest.raises(ValueError, match="share a manifest"):
         lp.merge_catalogue(bad, lp.daily_entry("2026-09-03", manifest(), False))
+
+
+def test_index_row_is_created_unscored_and_upgraded_when_scored():
+    """The record is of every run, not only the ones that scored well."""
+    m = manifest()
+    unscored = lp.index_row("2026-09-04", m, None, verified=False)
+    assert unscored["scored"] is False and unscored["reportUrl"] is None and unscored["headline"] is None
+    scored = lp.index_row("2026-09-04", m, {"headline": {"thresholdDbz": 40, "usefulScaleKm": None,
+                                                         "usefulHours": 0, "scoredHours": 17,
+                                                         "largestScaleKm": 98.2}}, verified=True)
+    assert scored["scored"] is True
+    assert scored["reportUrl"] == "/verification/daily-2026-09-04.html"
+    assert scored["headline"]["usefulScaleKm"] is None, "a no-skill result must survive into the index"
+
+
+def test_merge_index_replaces_the_same_day_and_orders_newest_first():
+    idx = {"schemaVersion": 1, "runs": []}
+    idx = lp.merge_index(idx, lp.index_row("2026-09-02", manifest("2026-09-02T12:00:00Z"), None, False))
+    idx = lp.merge_index(idx, lp.index_row("2026-09-04", manifest("2026-09-04T12:00:00Z"), None, False))
+    # the same day comes back scored
+    idx = lp.merge_index(idx, lp.index_row("2026-09-02", manifest("2026-09-02T12:00:00Z"),
+                                           {"headline": {"thresholdDbz": 40, "usefulScaleKm": 50.3,
+                                                         "usefulHours": 3, "scoredHours": 17,
+                                                         "largestScaleKm": 98.2}}, True))
+    ids = [r["id"] for r in idx["runs"]]
+    assert ids == ["daily-2026-09-04", "daily-2026-09-02"], ids
+    assert sum(1 for r in idx["runs"] if r["id"] == "daily-2026-09-02") == 1
+    assert idx["runs"][1]["scored"] is True and idx["runs"][1]["headline"]["usefulScaleKm"] == 50.3
+
+
+def test_a_scored_row_must_name_its_report():
+    bad = dict(lp.index_row("2026-09-04", manifest(), None, verified=True), reportUrl=None)
+    with pytest.raises(ValueError, match="name its report"):
+        lp.merge_index({"schemaVersion": 1, "runs": []}, bad)
+
+
+def test_publishing_a_scored_run_actually_writes_the_record(monkeypatch):
+    """The call-site test. Every merge_index test above passes with the call
+    removed entirely, which would ship a scored run the index never lists."""
+    import io, json as _json
+
+    written, invalidated = {}, []
+    site = {
+        "data/web/catalogue.json": _json.dumps(CURATED).encode(),
+        "verification/index.json": _json.dumps({"schemaVersion": 1, "runs": []}).encode(),
+    }
+    tar = _fake_site_tar("daily-2026-09-04")
+    data = {
+        "daily/2026-09-04/site-verified.tar.gz": tar,
+        "daily/2026-09-04/fss.json": _json.dumps({"headline": {"thresholdDbz": 40, "usefulScaleKm": 98.2,
+                                                               "usefulHours": 7, "scoredHours": 17,
+                                                               "largestScaleKm": 98.2}}).encode(),
+    }
+
+    class FakeS3:
+        def get_object(self, Bucket, Key):
+            store = site if Bucket == lp.SITE_BUCKET else data
+            return {"Body": io.BytesIO(store[Key])}
+
+        def put_object(self, Bucket, Key, Body, **kw):
+            written[Key] = Body
+            if Bucket == lp.SITE_BUCKET:
+                site[Key] = Body if isinstance(Body, bytes) else Body.encode()
+
+    monkeypatch.setattr(lp, "s3", FakeS3())
+    monkeypatch.setattr(lp, "invalidate", lambda paths: invalidated.extend(paths) or "INV")
+    monkeypatch.setattr(lp.time, "sleep", lambda s: None)
+
+    lp.publish_site("2026-09-04", "daily/2026-09-04/site-verified.tar.gz", verified=True)
+
+    assert "verification/index.json" in written, "a scored publish did not touch the record"
+    rec = _json.loads(site["verification/index.json"])
+    row = next(r for r in rec["runs"] if r["id"] == "daily-2026-09-04")
+    assert row["scored"] is True and row["headline"]["usefulScaleKm"] == 98.2
+    assert "/verification/index.json" in invalidated, "the record was written but never invalidated"
+
+
+def _fake_site_tar(event_id: str) -> bytes:
+    """A minimal event tree: one manifest and one frame."""
+    import io, tarfile, json as _json
+
+    m = _json.dumps({"run": {"id": event_id, "init": "2026-09-04T12:00:00Z"},
+                     "frames": ["2026-09-04T12:00:00Z"],
+                     "layers": {"a": {"kind": "hero-fine"}}}).encode()
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as t:
+        for name, body in ((f"{event_id}/manifest.json", m), (f"{event_id}/layers/a/000.webp", b"x")):
+            info = tarfile.TarInfo(name); info.size = len(body)
+            t.addfile(info, io.BytesIO(body))
+    return buf.getvalue()

@@ -173,6 +173,11 @@ if [[ -d "$PAGES_SRC" ]]; then
   say "── staging $PAGES_SRC -> $DIST/verification"
   mkdir -p "$DIST/verification"
   cp "$PAGES_SRC"/*.html "$DIST/verification/"
+  # index.json is the record the page renders from. The repo holds only the
+  # curated runs; the daily publisher appends its own rows to the live copy, so
+  # this file is merged with what is on the bucket immediately before upload —
+  # the same rule as the catalogue, for the same reason.
+  [[ -f "$PAGES_SRC/index.json" ]] && cp "$PAGES_SRC/index.json" "$DIST/verification/"
 fi
 
 python - "$DIST/data/web" <<'PYGUARD'
@@ -529,11 +534,48 @@ done
 
 PAGE_RELS=()
 if [[ -d "$DIST/verification" ]]; then
-  for f in "$DIST"/verification/*.html; do
+  # Carry the daily publisher's rows across, exactly as the catalogue merge does.
+  # Without this a deploy erases every scored daily run from the record while
+  # leaving its report page in place: an orphan the index no longer lists.
+  LIVE_IDX="$NATIVE_TMP_EARLY/latentsky-live-verification-index.json"
+  rm -f "$LIVE_IDX"
+  if HEAD_ERR=$(aws s3api head-object --bucket "$SITE_BUCKET" --key verification/index.json \
+                  --region "$REGION" 2>&1 >/dev/null); then
+    aws s3api get-object --bucket "$SITE_BUCKET" --key verification/index.json \
+      --region "$REGION" "$LIVE_IDX" >/dev/null \
+      || { say "REFUSING: the live verification record exists but could not be downloaded"; exit 1; }
+    python - "$DIST/verification/index.json" "$LIVE_IDX" <<'PYIDX'
+import json, pathlib, sys
+repo_p, live_p = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+repo = json.loads(repo_p.read_text(encoding="utf-8"))
+live = json.loads(live_p.read_text(encoding="utf-8"))
+curated = {r["id"] for r in repo.get("runs", [])}
+carried = [r for r in live.get("runs", []) if r.get("id") not in curated]
+if carried:
+    repo["runs"] = repo.get("runs", []) + carried
+    repo_p.write_text(json.dumps(repo, indent=1) + "\n", encoding="utf-8")
+    print(f"verification record: carried {len(carried)} live run(s): {[r['id'] for r in carried]}")
+else:
+    print("verification record: nothing extra on the live site")
+PYIDX
+  elif grep -qi "Not Found\|404" <<<"$HEAD_ERR"; then
+    say "no verification record on the site yet (first deploy)"
+  else
+    say "REFUSING: could not determine whether a live verification record exists: $HEAD_ERR"
+    exit 1
+  fi
+
+  for f in "$DIST"/verification/*; do
     [[ -f "$f" ]] || continue
-    PAGE_RELS+=("verification/${f##*/}")
-    aws_mutate s3 cp "$f" "s3://$SITE_BUCKET/verification/${f##*/}" --region "$REGION" \
-      --content-type "text/html" --cache-control "$NOCACHE_CC" --only-show-errors
+    name="${f##*/}"
+    case "$name" in
+      *.html) ct="text/html" ;;
+      *.json) ct="application/json" ;;
+      *) say "REFUSING: unexpected file in verification/: $name"; exit 1 ;;
+    esac
+    PAGE_RELS+=("verification/$name")
+    aws_mutate s3 cp "$f" "s3://$SITE_BUCKET/verification/$name" --region "$REGION" \
+      --content-type "$ct" --cache-control "$NOCACHE_CC" --only-show-errors
   done
   say "── upload: verification pages (no-cache): ${PAGE_RELS[*]:-none}"
 fi
@@ -596,7 +638,10 @@ verify_one "index.html" "/index.html" "text/html" "no-cache"
 verify_one "manifest.json" "/data/web/manifest.json" "application/json" "no-cache"
 verify_one "webp frame ($FRAME_REL)" "/data/web/$FRAME_REL" "image/webp" "immutable"
 for rel in "${PAGE_RELS[@]}"; do
-  verify_one "verification page ($rel)" "/$rel" "text/html" "no-cache"
+  case "$rel" in
+    *.json) verify_one "verification record ($rel)" "/$rel" "application/json" "no-cache" ;;
+    *)      verify_one "verification page ($rel)" "/$rel" "text/html" "no-cache" ;;
+  esac
 done
 
 # Compression check (§9.2): second request, after the first has warmed the edge.

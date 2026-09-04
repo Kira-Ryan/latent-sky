@@ -1,0 +1,21 @@
+{
+ "schemaVersion": 1,
+ "runs": [
+  {
+   "id": "us-dixie-2025",
+   "title": "us-dixie-2025",
+   "init": "2025-03-14T18:00:00Z",
+   "scored": true,
+   "liveUrl": "https://latent-sky.dev/?event=us-dixie-2025",
+   "members": 8,
+   "reportUrl": "/verification/stormcast-dixie-2025.html",
+   "headline": {
+    "thresholdDbz": 40,
+    "usefulScaleKm": 98.2,
+    "usefulHours": 7,
+    "scoredHours": 17,
+    "largestScaleKm": 98.2
+   }
+  }
+ ]
+}

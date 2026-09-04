@@ -45,6 +45,33 @@ if [ -n "${SCRIPT_B64:-}" ] && [ -z "${LATENTSKY_PATCHED:-}" ]; then
   echo "SCRIPT_B64 did not decode to a valid script; running the baked copy instead" >&2
 fi
 
+# A finished container exits, and RunPod restarts it. That restart must not
+# redirect the log or install the exit trap, because both would OVERWRITE the
+# real run's record: on 4 Sep 2026 a 2.4 KB restart notice replaced the full log
+# of a successful run, and finished.json was rewritten as status "ok" from the
+# restart path's zeroed return codes — which would have reported a FAILED run as
+# clean. The outcome is therefore stamped into DAILY_DONE by the run itself and
+# the restart only echoes it back, so the pod is still announced and terminated
+# without anything being invented.
+if [ -f /out/DAILY_DONE ]; then
+  PRIOR=$(cat /out/DAILY_DONE 2>/dev/null | tr -d '\n')
+  [ -n "$PRIOR" ] || PRIOR="unknown"
+  echo "DAILY_DONE present (status $PRIOR): this pod already finished. Re-announcing and exiting."
+  if [ -n "${PUT_FINISHED:-}" ]; then
+    cat > /tmp/finished.json <<JSONEOF
+{"date": "$RUN_DATE", "status": "$PRIOR", "restarted": true, "at": "$(date -u +%FT%TZ)"}
+JSONEOF
+    python3 - "$PUT_FINISHED" <<'PYEOF' || true
+import sys, urllib.request
+with open("/tmp/finished.json", "rb") as fh:
+    body = fh.read()
+urllib.request.urlopen(urllib.request.Request(sys.argv[1], data=body, method="PUT"), timeout=300)
+print("re-announced")
+PYEOF
+  fi
+  exit 0
+fi
+
 set -x
 exec > /tmp/run.log 2>&1
 echo "=== latent-sky daily run $(date -u +%FT%TZ) date=$RUN_DATE init=$INIT event=$EVENT_ID members=${MEMBERS:-1} ==="
@@ -92,12 +119,6 @@ JSONEOF
 }
 trap finish EXIT
 
-if [ -f /out/DAILY_DONE ]; then
-  # The container restarted after finishing. Re-announce so the publisher stops
-  # this pod, and get out — never idle, idling is billed.
-  echo "DAILY_DONE present: this pod already finished. Re-announcing and exiting."
-  exit 0
-fi
 for v in RUN_DATE INIT EVENT_ID PUT_LOG PUT_STORES PUT_SITE PUT_FINISHED; do
   if [ -z "${!v}" ]; then echo "FATAL: $v is not set"; TODAY_RC=78; exit 78; fi
 done
@@ -212,7 +233,7 @@ if [ $TODAY_RC -eq 0 ]; then
   echo "site upload exit: $TODAY_RC"
 fi
 
-touch /out/DAILY_DONE
+if [ $TODAY_RC -eq 0 ] && [ $PREV_RC -eq 0 ]; then echo ok > /out/DAILY_DONE; else echo failed > /out/DAILY_DONE; fi
 if [ $TODAY_RC -eq 0 ] && [ $PREV_RC -eq 0 ]; then
   echo "=== ALL DONE $(date -u +%FT%TZ) ==="
   exit 0

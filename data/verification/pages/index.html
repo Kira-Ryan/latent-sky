@@ -65,19 +65,59 @@
   against observed radar afterwards with the Fractions Skill Score and republished with the
   observations beside it. The results are what they are.</p>
 
-  <div class="tablewrap">
-    <table>
-      <thead><tr><th>Run</th><th>Initialised</th><th>Result</th><th>Ensemble</th><th></th></tr></thead>
-      <tbody>
-        <tr><td><a href="https://latent-sky.dev/?event=us-dixie-2025">us-dixie-2025</a></td><td class="num">2025-03-14 18:00Z</td><td class="result">Useful at 98 km, 7 of 17 h &middot; 40 dBZ</td><td>8 members</td><td><a href="/verification/stormcast-dixie-2025.html">Read</a></td></tr>
-      </tbody>
-    </table>
+  <div class="tablewrap" id="table">
+    <p class="empty">Loading the record&hellip;</p>
   </div>
 
   <footer>
     <span>Kira Ryan &middot; <a href="/">latent-sky.dev</a></span>
-    <span>1 run scored</span>
+    <span id="count"></span>
   </footer>
 </div>
+<script>
+// The rows live in a JSON file the daily pipeline appends to, so a new scored run
+// needs no HTML regeneration and no image rebuild. A failed fetch says so rather
+// than rendering an empty table, which would read as "nothing has been scored".
+const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const summarise = (h) => {
+  if (!h) return '<span class="none">not summarised</span>';
+  if (h.usefulScaleKm === null || h.usefulScaleKm === undefined) {
+    return `No useful skill at ${h.thresholdDbz} dBZ at any scale to ${Math.round(h.largestScaleKm)} km`;
+  }
+  return `Useful at ${Math.round(h.usefulScaleKm)} km, ${h.usefulHours} of ${h.scoredHours} h &middot; ${h.thresholdDbz} dBZ`;
+};
+fetch("/verification/index.json", { cache: "no-store" })
+  .then((r) => { if (!r.ok) throw new Error(`${r.status} ${r.statusText}`); return r.json(); })
+  .then((doc) => {
+    const runs = (doc.runs || []).slice().sort((a, b) => String(b.init).localeCompare(String(a.init)));
+    const scored = runs.filter((r) => r.scored);
+    document.getElementById("count").textContent =
+      `${scored.length} run${scored.length === 1 ? "" : "s"} scored of ${runs.length} published`;
+    if (!runs.length) {
+      document.getElementById("table").innerHTML =
+        '<p class="empty">No runs have been published yet.</p>';
+      return;
+    }
+    document.getElementById("table").innerHTML =
+      '<table><thead><tr><th>Run</th><th>Initialised</th><th>Result</th><th>Ensemble</th><th></th></tr></thead><tbody>' +
+      runs.map((r) => {
+        const when = r.init ? esc(String(r.init).slice(0, 16).replace("T", " ")) + "Z" : "&mdash;";
+        const name = r.liveUrl ? `<a href="${esc(r.liveUrl)}">${esc(r.title || r.id)}</a>` : esc(r.title || r.id);
+        const members = r.members > 1 ? `${r.members} members` : '<span class="none">single run</span>';
+        // Only a run whose report actually exists offers a link. An unscored run
+        // is listed, because it is part of the record, and says so plainly.
+        const read = r.scored && r.reportUrl
+          ? `<a href="${esc(r.reportUrl)}">Read</a>`
+          : '<span class="none">&mdash;</span>';
+        const result = r.scored ? summarise(r.headline) : '<span class="none">not yet scored</span>';
+        return `<tr><td>${name}</td><td class="num">${when}</td><td class="result">${result}</td><td>${members}</td><td>${read}</td></tr>`;
+      }).join("") + "</tbody></table>";
+  })
+  .catch((err) => {
+    console.error("verification index unavailable:", err);
+    document.getElementById("table").innerHTML =
+      '<p class="empty">The record could not be loaded just now. Every report is still at /verification/, and the run pages link their own.</p>';
+  });
+</script>
 </body>
 </html>
