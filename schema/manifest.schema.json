@@ -28,7 +28,8 @@
         "stormName": { "type": "string", "minLength": 1, "description": "Optional display name of the event, e.g. \"Typhoon Gaemi\". First-class so the UI never has to parse it out of generatedNote; absent when no storm claim should be made." },
         "heroFrame": { "type": "integer", "minimum": 0, "description": "Optional index into frames of the most developed frame — where 'enter the storm' should arrive. The pipeline gates it against frames.length (a JSON schema cannot cross-reference); absent, the UI falls back to the last frame." },
         "placeLabel": { "type": "string", "minLength": 1, "description": "Optional human label for the hero domain, e.g. \"Taiwan · CWA model domain\"." },
-        "reportUrl": { "type": "string", "minLength": 1, "description": "Optional URL of this run's verification report page, root-relative on the site (e.g. \"/verification/stormcast-dixie-2025.html\") or absolute. The UI links it from the caveat." }
+        "reportUrl": { "type": "string", "minLength": 1, "description": "Optional URL of this run's verification report page, root-relative on the site (e.g. \"/verification/stormcast-dixie-2025.html\") or absolute. The UI links it from the caveat." },
+        "verification": { "enum": ["pending", "scored"], "description": "Whether this run is enrolled in the observation-scoring loop, and how far it has got. ABSENT means no claim at all — the right value for a run nothing will ever score, such as a Taiwan typhoon with no MRMS coverage. \"pending\" says only that it has not been scored yet, which stays true however long that takes; it is deliberately not a promise about when. \"scored\" requires reportUrl." }
       }
     },
     "frames": {

@@ -1,24 +1,42 @@
 <script lang="ts">
   import { sky } from "../state/store.svelte";
+
+  // Where this run stands in the scoring loop. Undefined is a real answer and
+  // means "nothing is scoring this", which is the truth for a typhoon outside
+  // radar coverage — so the whole line is absent rather than reassuring.
+  const state = $derived(sky.manifest?.run.verification);
+  const report = $derived(sky.manifest?.run.reportUrl);
 </script>
 
 <!-- The caveat lives in the UI, not just the README (§13). Always visible,
      never a tooltip — styled as a legible footnote: a hairline rule, a quiet
      small-caps heading, comfortable measure. The contact byline shares the
-     strip: same register, right-aligned, wrapping below on narrow screens. -->
-<div class="caveat">
+     strip: same register, right-aligned, wrapping below on narrow screens.
+
+     The verification line sits ABOVE all of it and one step louder. That a
+     forecast is scored against radar and the result published whatever it says
+     is the most interesting true thing on this site, and it was previously
+     buried mid-paragraph in an 11px footnote nobody reads. It is still prose,
+     not a badge: a status pill would have to stay accurate on a page a CDN
+     served from cache a day later, and this sentence does. -->
+{#if state}
+  <p class="verification">
+    {#if state === "scored"}
+      <strong>Scored against MRMS radar.</strong>
+      {#if report}
+        <a href={report} target="_blank" rel="noopener noreferrer">Read the verification.</a>
+      {/if}
+    {:else}
+      <strong>Not yet scored.</strong>
+      Published before the weather happened, and measured against radar afterwards.
+    {/if}
+  </p>
+{/if}
+
+<div class="caveat" class:under-verification={state !== undefined}>
   <div>
     <span class="caveat-label">About this data</span>
-    <p class="caveat-text">
-      {sky.manifest?.run.generatedNote}
-      {#if sky.manifest?.run.reportUrl}
-        <!-- The numbers behind the pictures: the run's verification against
-             observations, published beside the site rather than claimed here. -->
-        <a class="report" href={sky.manifest.run.reportUrl} target="_blank" rel="noopener noreferrer">
-          How well did it do? Read the verification.
-        </a>
-      {/if}
-    </p>
+    <p class="caveat-text">{sky.manifest?.run.generatedNote}</p>
   </div>
   <address class="contact">
     <span class="caveat-label">Built by</span>
@@ -33,6 +51,32 @@
 </div>
 
 <style>
+  .verification {
+    margin: 9px 0 0;
+    padding-top: 7px;
+    border-top: 1px solid rgba(44, 61, 99, 0.55);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-dim);
+    max-width: 116ch;
+  }
+
+  .verification strong {
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .verification a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+
+  .verification a:hover,
+  .verification a:focus-visible {
+    border-bottom-color: var(--accent);
+  }
+
   .caveat {
     margin: 9px 0 0;
     padding-top: 7px;
@@ -42,6 +86,14 @@
     align-items: flex-start;
     gap: 12px 40px;
     flex-wrap: wrap;
+  }
+
+  /* When the verification line is present it owns the rule that opens the
+     block, so the strip below it does not draw a second one four pixels later. */
+  .caveat.under-verification {
+    margin-top: 6px;
+    padding-top: 0;
+    border-top: none;
   }
 
   .caveat-label {
@@ -71,19 +123,6 @@
 
   .contact .caveat-text {
     white-space: nowrap;
-  }
-
-  .report {
-    color: var(--text-dim);
-    text-decoration: none;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.35);
-    white-space: nowrap;
-  }
-
-  .report:hover,
-  .report:focus-visible {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
   }
 
   .contact a {

@@ -27,6 +27,12 @@ export interface RunInfo {
   placeLabel?: string;
   /** This run's verification report page, when one has been published. */
   reportUrl?: string;
+  /**
+   * Where this run stands in the observation-scoring loop. Undefined means the
+   * run makes no claim — nothing is scoring it and the UI says nothing, which is
+   * the correct state for a typhoon outside radar coverage.
+   */
+  verification?: "pending" | "scored";
 }
 
 export interface LayerDef {
@@ -159,6 +165,12 @@ export function parseManifest(raw: unknown, baseUrl: URL): Manifest {
     heroFrame: runRaw.heroFrame === undefined ? undefined : requireIndex(runRaw.heroFrame, "$.run.heroFrame"),
     placeLabel: runRaw.placeLabel === undefined ? undefined : requireString(runRaw.placeLabel, "$.run.placeLabel"),
     reportUrl: runRaw.reportUrl === undefined ? undefined : requireString(runRaw.reportUrl, "$.run.reportUrl"),
+    // An unknown value parses to undefined rather than reaching the UI: a state
+    // this build does not understand must make no claim, not an arbitrary one.
+    verification:
+      runRaw.verification === "pending" || runRaw.verification === "scored"
+        ? runRaw.verification
+        : undefined,
   };
 
   if (!Array.isArray(root.frames) || root.frames.length < 1) fail("$.frames", "expected non-empty array");

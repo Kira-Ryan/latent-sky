@@ -1,20 +1,24 @@
 <script lang="ts">
   import { sky } from "../state/store.svelte";
+  import { formatUtc, leadLabel, leadSpoken } from "../data/time";
 
   const max = $derived(Math.max(sky.frameCount - 1, 0));
 
-  const timeFormat = new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-    timeZone: "UTC",
-  });
+  const timeText = $derived(formatUtc(sky.nearestFrameIso));
 
-  const timeText = $derived(
-    sky.nearestFrameIso ? `${timeFormat.format(new Date(sky.nearestFrameIso))} UTC` : "",
+  /**
+   * How far ahead of its initialisation this frame looks. Four characters that
+   * do two jobs: they answer the forecaster's question where it is being asked,
+   * and they are the visitor's clue that these frames are predictions from a
+   * starting point rather than a recording. Frame zero says "analysis", because
+   * the initial condition is observed data and must not read as model output.
+   *
+   * Empty for a run with no init — the ERA5 event's frames are independent
+   * analysis times, and a lead time from nothing would be an invention.
+   */
+  const lead = $derived(leadLabel(sky.manifest?.run.init, sky.nearestFrameIso));
+  const spokenTime = $derived(
+    lead ? `${timeText}, ${leadSpoken(sky.manifest?.run.init, sky.nearestFrameIso)}` : timeText,
   );
 
   function clampFrame(f: number): number {
@@ -86,10 +90,14 @@
     aria-valuemin={0}
     aria-valuemax={max}
     aria-valuenow={sky.frame}
-    aria-valuetext={timeText}
+    aria-valuetext={spokenTime}
   />
 
-  <span class="time">{timeText}</span>
+  <span class="time" title={spokenTime}>
+    <!-- The separator is an explicit expression: Svelte trims literal leading
+         whitespace inside an element, which silently glued "UTC" to "·". -->
+    {timeText}{#if lead}<span class="lead" class:analysis={lead === "analysis"}>{" · "}{lead}</span>{/if}
+  </span>
 
   <label class="speed">
     <span class="vh">Playback speed</span>
@@ -137,7 +145,18 @@
     font-variant-numeric: tabular-nums;
     font-size: 12px;
     color: var(--text-dim);
-    min-width: 15ch;
+    /* Was 15ch, for the instant alone; the lead adds up to " · analysis". */
+    min-width: 21ch;
+  }
+
+  .lead {
+    color: var(--text-faint);
+  }
+
+  /* Frame zero is observed data, not a prediction. It is named rather than
+     numbered, and set apart so the distinction survives a glance. */
+  .lead.analysis {
+    font-style: italic;
   }
 
   .speed select {

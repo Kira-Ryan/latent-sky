@@ -51,6 +51,7 @@ import argparse
 import pathlib
 import shutil
 import time
+from datetime import datetime
 
 import numpy as np
 import yaml
@@ -184,6 +185,19 @@ def encode_layers(
     times = frame_times(coarse, hero)
     nframes = len(times)
     specs = load_ramps(config)
+
+    # The initialisation time, first-class. The frames alone cannot carry it: they
+    # are valid times, and nothing in them says which one the model started from
+    # or that the rest are predictions. The UI needs it to say how old a live
+    # forecast is, so it is asserted against frame 0 rather than trusted — a
+    # manifest that misstates its own init would mislabel every lead time. Checked
+    # here, before any encoding, so a stale --init costs a second and not a run.
+    init_iso = datetime.fromisoformat(str(cfg["init"])).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if init_iso != times[0]:
+        raise EncodeStormcastError(
+            f"config init {init_iso} is not the first frame {times[0]} — the run being encoded "
+            "is not the run the config describes (a stale --init, or the wrong zarr)"
+        )
 
     hero_lat = np.asarray(hero["lat"])
     hero_lon = to_180(np.asarray(hero["lon"]))
@@ -379,9 +393,20 @@ def encode_layers(
     size = basemap_mod.bake(tiles_dir, out_dir / BASEMAP_REL, coastline_path=coastline_path)
     print(f"  basemap baked: {BASEMAP_REL}  {size:,} B")
 
+    # Where this run stands in the scoring loop, as a STATE rather than a promise.
+    # The publish-time temptation is to write "verification arrives tomorrow", which
+    # is false the first morning a scoring pass fails. "pending" says only "not
+    # scored yet" and stays true however long that lasts, and a run nothing will
+    # ever score says nothing at all.
+    verification = "scored" if cfg.get("report") else (cfg.get("verification") or None)
+    if verification not in (None, "pending", "scored"):
+        raise EncodeStormcastError(f"config verification must be pending/scored, got {verification!r}")
+
     run = {
         "id": event_id or cfg.get("id") or pathlib.Path(event_config).stem,
         "kind": "forecast",
+        "init": init_iso,
+        **({"verification": verification} if verification else {}),
         "model": {
             "prognostic": "NVIDIA StormCast v1, 3 km convection-allowing over the "
                           "central US (Apache-2.0 checkpoint), initialised from HRRR",

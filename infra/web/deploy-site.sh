@@ -150,6 +150,14 @@ say "── staging $DATA_SRC -> $DIST/data/web"
 rm -rf "$DIST/data"
 mkdir -p "$DIST/data"
 cp -R "$DATA_SRC" "$DIST/data/web"
+# Daily runs are owned by the bucket, not the repo: infra/daily publishes them
+# from the pod, and a local copy only exists because the browser tests need one.
+# Staging it would re-upload megabytes this deploy did not produce and could
+# overwrite a fresher tree with a stale checkout.
+if [[ -d "$DIST/data/web/daily" ]]; then
+  say "  (not staging data/web/daily — the daily runs live in the bucket)"
+  rm -rf "$DIST/data/web/daily"
+fi
 
 # The merge with the live catalogue's daily runs happens LATER, immediately
 # before the catalogue is uploaded — see "merge the live daily runs" below. Doing

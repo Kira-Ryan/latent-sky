@@ -68,11 +68,17 @@ def daily_entry(date: str, manifest: dict, verified: bool) -> dict:
     has_hero = any(layer["kind"] == "hero-fine" for layer in manifest["layers"].values())
     init = manifest["run"].get("init") or manifest["frames"][0]
     when = dt.datetime.fromisoformat(init.replace("Z", "+00:00"))
-    title = f"Central US — live run, {when:%H}Z {when.day} {when:%b %Y}"
+    # No "live" and no "tomorrow". Both are baked into the catalogue at publish
+    # time and neither can retract itself: an entry stays for DAILY_KEEP days
+    # after it stops being the newest, and a promise of scoring "tomorrow" is
+    # false the first morning a scoring pass fails. The date says which run it is;
+    # the state says how far it has got, and "not yet scored" stays true however
+    # long that lasts.
+    title = f"Central US — daily run, {when:%H}Z {when.day} {when:%b %Y}"
     subtitle = (
-        "AI forecast · StormCast, 3 km · verified against MRMS radar"
+        "AI forecast · StormCast, 3 km · scored against MRMS radar"
         if verified else
-        "AI forecast · StormCast, 3 km · verification against radar tomorrow"
+        "AI forecast · StormCast, 3 km · not yet scored"
     )
     return {
         "id": f"daily-{date}",

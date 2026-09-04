@@ -38,9 +38,15 @@ def test_entry_reads_capabilities_from_the_manifest():
     e = lp.daily_entry("2026-09-03", manifest(), verified=False)
     assert e["id"] == "daily-2026-09-03" and e["manifest"] == "daily/2026-09-03/manifest.json"
     assert e["hasHero"] is True and e["kind"] == "hero" and e["region"] == "conus"
-    assert e["title"] == "Central US — live run, 12Z 3 Sep 2026"
-    assert "tomorrow" in e["subtitle"]
-    assert "verified" in lp.daily_entry("2026-09-03", manifest(), verified=True)["subtitle"]
+    assert e["title"] == "Central US — daily run, 12Z 3 Sep 2026"
+    # Neither line may bake a claim that cannot retract itself: no "live" in a
+    # title that outlives being newest, no "tomorrow" in a subtitle that a failed
+    # scoring pass makes false. State only.
+    assert e["subtitle"].endswith("not yet scored")
+    assert "tomorrow" not in e["subtitle"] and "live" not in e["title"].lower()
+    assert lp.daily_entry("2026-09-03", manifest(), verified=True)["subtitle"].endswith(
+        "scored against MRMS radar"
+    )
     assert lp.daily_entry("2026-09-03", manifest(hero=False), verified=False)["kind"] == "global-only"
 
 
@@ -56,7 +62,7 @@ def test_refreshing_a_day_replaces_it_in_place():
     c1 = lp.merge_catalogue(CURATED, lp.daily_entry("2026-09-03", manifest(), False))
     c2 = lp.merge_catalogue(c1, lp.daily_entry("2026-09-03", manifest(), True))
     dailies = [e for e in c2["events"] if e["id"].startswith("daily-")]
-    assert len(dailies) == 1 and "verified against" in dailies[0]["subtitle"]
+    assert len(dailies) == 1 and "scored against MRMS radar" in dailies[0]["subtitle"]
 
 
 def test_window_rolls_off_the_oldest():

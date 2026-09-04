@@ -3,6 +3,8 @@
   "run": {
     "id": "us-dixie-2025",
     "kind": "forecast",
+    "init": "2025-03-14T18:00:00Z",
+    "verification": "scored",
     "model": {
       "prognostic": "NVIDIA StormCast v1, 3 km convection-allowing over the central US (Apache-2.0 checkpoint), initialised from HRRR",
       "downscaling": "none \u2014 StormCast is convection-allowing throughout; the coarse layer is the 25 km GFS forecast it is conditioned on"

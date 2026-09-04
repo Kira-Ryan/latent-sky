@@ -20,7 +20,7 @@ coarse_variables: [u10m, v10m, t2m, tcwv, msl]
 seed: 1200
 output: /out/daily.zarr
 
-storm_name: "Live StormCast run"
+storm_name: "Central US"
 place_label: "Central US · StormCast 3 km domain"
 # 10 = 22Z: the late-afternoon convective peak for a 12Z init. The peak of a
 # given day is unknown when this ships; the verification pass finds it after.
@@ -30,5 +30,9 @@ hero_frame: 10
 # claims nothing when it is absent — never inherit another event's framing.
 framing_note: >-
   This run was made from the most recent analysis available, hours before the
-  weather it describes. It is scored against radar the following day and the
-  verification is published beside it, whatever it says.
+  weather it describes.
+
+# Enrolled in the scoring loop. The UI renders the STATE (not yet scored, or
+# scored with a link); nothing here promises a date, because a promise baked
+# into published data cannot retract itself when a scoring pass fails.
+verification: pending

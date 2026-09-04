@@ -3,6 +3,7 @@
   import { sky } from "../state/store.svelte";
   import { createGlobe, type GlobeApi, type HeroAnchor } from "../globe";
   import { heroFrameFor, loadManifest, stormNameFor, type Variable } from "../data/manifest";
+  import { ageLabel, formatUtc } from "../data/time";
   import { writeEventToUrl } from "../data/catalogue";
   import { motionOk } from "../motion";
   import TimeScrubber from "./TimeScrubber.svelte";
@@ -36,6 +37,22 @@
   // the manifest's first-class run.stormName, falling back through
   // stormNameFor()'s caption heuristic. No storm named, no claim made.
   const stormName = $derived(sky.manifest ? stormNameFor(sky.manifest) : "the hero region");
+
+  /**
+   * The issue line under the wordmark. `nowMs` ticks because $derived reacts to
+   * state, not to the passage of time: without it a page left open all evening
+   * would still claim the forecast was issued "1 h ago". A minute is finer than
+   * the whole-hour resolution the label prints, so the number is never stale.
+   */
+  let nowMs = $state(Date.now());
+  $effect(() => {
+    const id = setInterval(() => (nowMs = Date.now()), 60_000);
+    return () => clearInterval(id);
+  });
+  const issuedText = $derived(
+    sky.manifest?.run.init ? `Forecast issued ${formatUtc(sky.manifest.run.init)}` : "",
+  );
+  const issuedAge = $derived(ageLabel(sky.manifest?.run.init, nowMs));
 
   /**
    * Point the globe at the manifest currently in the store. This is the whole
@@ -276,7 +293,20 @@
         <h1>Latent Sky</h1>
         <EventSwitcher onselect={selectEvent} />
       </div>
-      <p class="runid">{sky.switching ? "loading…" : sky.manifest?.run.id}</p>
+      <!-- The line under the wordmark used to spend itself on a slug. It now says
+           when the forecast was issued, which is the one fact that separates a
+           live run from a case study, and the age when that age still informs.
+           No badge and no "live": a number that grows is honest on a cached page
+           where a coloured dot would not be. -->
+      <p class="runid" title={sky.manifest?.run.id}>
+        {#if sky.switching}
+          loading…
+        {:else if issuedText}
+          {issuedText}{#if issuedAge}<span class="age">{" · "}{issuedAge}</span>{/if}
+        {:else}
+          {sky.manifest?.run.id}
+        {/if}
+      </p>
     </header>
 
     <!-- One clean top-right stack: variable pills, then the reveal toggle,
@@ -412,6 +442,13 @@
     font-size: 10.5px;
     letter-spacing: 0.08em;
     color: var(--text-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The age is the part that moves, so it is the part that recedes: the
+     absolute instant is what the reader should trust and remember. */
+  .runid .age {
+    opacity: 0.75;
   }
 
   .corner-stack {
