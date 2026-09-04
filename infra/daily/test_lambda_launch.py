@@ -154,3 +154,38 @@ def test_plan_dates(env):
     assert p["event_id"] == "daily-2026-09-03"
     assert p["init"] == "2026-09-03T12:00:00"
     assert p["prev_event_id"] == "daily-2026-09-02"
+
+
+def test_scoring_reaches_past_a_gap_day(env):
+    """A missed day must not orphan the run before it: 2 Sep has stores and no
+    score, 3 Sep never ran, and the 4 Sep pod must still pick 2 Sep up."""
+    fake, _ = env
+    fake.objects["daily/2026-09-02/stores.tar.gz"] = b"x"
+    import json
+    fake.objects["daily/2026-09-02/launched.json"] = json.dumps(
+        {"init": "2026-09-02T12:00:00", "event_id": "daily-2026-09-02", "members": 1}).encode()
+    import datetime as dt
+    target = ll.pending_scoring(dt.date(2026, 9, 4))
+    assert target is not None and target[0] == "2026-09-02"
+    assert target[1]["event_id"] == "daily-2026-09-02"
+
+
+def test_an_already_scored_day_stops_the_walk(env):
+    fake, _ = env
+    fake.objects["daily/2026-09-03/stores.tar.gz"] = b"x"
+    fake.objects["daily/2026-09-03/scored.json"] = b"{}"
+    fake.objects["daily/2026-09-01/stores.tar.gz"] = b"x"   # older, also unscored
+    import datetime as dt
+    assert ll.pending_scoring(dt.date(2026, 9, 4)) is None
+
+
+def test_nothing_to_score_is_not_an_error(env):
+    import datetime as dt
+    assert ll.pending_scoring(dt.date(2026, 9, 4)) is None
+
+
+def test_the_lookback_is_bounded(env):
+    fake, _ = env
+    fake.objects["daily/2026-08-01/stores.tar.gz"] = b"x"
+    import datetime as dt
+    assert ll.pending_scoring(dt.date(2026, 9, 4)) is None, "reached back further than the bound"

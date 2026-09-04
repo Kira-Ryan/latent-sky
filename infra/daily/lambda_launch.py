@@ -44,6 +44,7 @@ RUNPOD_KEY_PARAM = os.environ.get("RUNPOD_KEY_PARAM", "/latentsky/runpod-api-key
 MEMBERS = os.environ.get("MEMBERS", "1")
 CYCLE_HOUR = int(os.environ.get("CYCLE_HOUR", "12"))
 NSTEPS = int(os.environ.get("NSTEPS", "18"))
+SCORING_LOOKBACK_DAYS = int(os.environ.get("SCORING_LOOKBACK_DAYS", "7"))
 REGION = os.environ.get("AWS_REGION", "us-east-1")
 EXPIRY = 6 * 3600
 
@@ -175,6 +176,26 @@ def plan(now: dt.datetime) -> dict:
     }
 
 
+def pending_scoring(today: dt.date, lookback: int = None) -> tuple[str, dict] | None:
+    """The newest earlier day whose forecast exists and has not been scored.
+
+    Walks back day by day from yesterday. Returns (date, its launch marker) or
+    None when there is nothing to score. Bounded by SCORING_LOOKBACK_DAYS so a
+    long gap cannot make the pod fetch something arbitrarily old — and so this
+    function's cost stays a handful of HEADs.
+    """
+    days = SCORING_LOOKBACK_DAYS if lookback is None else lookback
+    for back in range(1, days + 1):
+        day = (today - dt.timedelta(days=back)).isoformat()
+        if not key_exists(f"daily/{day}/stores.tar.gz"):
+            continue
+        if key_exists(f"daily/{day}/scored.json"):
+            # Scored already: everything older has had its chance too.
+            return None
+        return day, (read_json(f"daily/{day}/launched.json") or {})
+    return None
+
+
 def handler(event, context):
     now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
     event = event if isinstance(event, dict) else {}
@@ -232,19 +253,23 @@ def handler(event, context):
         with open(script, "rb") as fh:
             env["SCRIPT_B64"] = base64.b64encode(fh.read()).decode()
 
-    prev_stores = f"daily/{p['prev_date']}/stores.tar.gz"
-    prev_scored = f"daily/{p['prev_date']}/scored.json"
-    prev_claim = read_json(f"daily/{p['prev_date']}/launched.json") or {}
-    if key_exists(prev_stores) and not key_exists(prev_scored):
+    # The most recent day that has stores and has not been scored — not simply
+    # yesterday. A single missed day (NOAA late, a failed pod, a day the schedule
+    # was off) would otherwise orphan the run before it forever, because nothing
+    # ever looks back past one day. Radar is archived, so an older day scores just
+    # as well; only the lookback needs to be honest about how far it will reach.
+    target = pending_scoring(dt.date.fromisoformat(p["date"]))
+    if target:
+        prev_date, prev_claim = target
         env.update({
-            "PREV_DATE": p["prev_date"],
-            "PREV_INIT": prev_claim.get("init", p["prev_init"]),
-            "PREV_EVENT_ID": prev_claim.get("event_id", p["prev_event_id"]),
+            "PREV_DATE": prev_date,
+            "PREV_INIT": prev_claim.get("init", f"{prev_date}T{CYCLE_HOUR:02d}:00:00"),
+            "PREV_EVENT_ID": prev_claim.get("event_id", f"daily-{prev_date}"),
             "PREV_MEMBERS": str(prev_claim.get("members", MEMBERS)),
-            "GET_PREV_STORES": presign_get(prev_stores),
-            "PUT_PREV_SITE": presign_put(f"daily/{p['prev_date']}/site-verified.tar.gz"),
-            "PUT_PREV_REPORT": presign_put(f"daily/{p['prev_date']}/report.html"),
-            "PUT_PREV_FSS": presign_put(f"daily/{p['prev_date']}/fss.json"),
+            "GET_PREV_STORES": presign_get(f"daily/{prev_date}/stores.tar.gz"),
+            "PUT_PREV_SITE": presign_put(f"daily/{prev_date}/site-verified.tar.gz"),
+            "PUT_PREV_REPORT": presign_put(f"daily/{prev_date}/report.html"),
+            "PUT_PREV_FSS": presign_put(f"daily/{prev_date}/fss.json"),
         })
 
     try:
