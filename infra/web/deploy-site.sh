@@ -401,14 +401,19 @@ aws_mutate s3api put-bucket-policy --bucket "$SITE_BUCKET" --region "$REGION" \
 # Immutable trees first (one cp per extension so metadata is explicit, never guessed
 # by the CLI), then root files, then the two no-cache entry points LAST so their
 # metadata always wins.
-upload_tree() {  # $1 = subdir under dist,  $2 = Cache-Control
+upload_tree() {  # $1 = subdir under dist, $2 = Cache-Control, $3... = extra --exclude globs
   local sub=$1 cc=$2 ext ctype
+  shift 2
+  local skips=()
+  for g in "$@"; do skips+=(--exclude "$g"); done
   local exts
   exts=$(find "$DIST/$sub" -type f -name '*.*' | sed 's/.*\.//' | tr '[:upper:]' '[:lower:]' | sort -u)
   for ext in $exts; do
     ctype=$(content_type_for "$ext")   # audited in preflight — cannot fail here
+    # The extra excludes come AFTER the include so they win: aws applies filters
+    # in order and the last match decides.
     aws_mutate s3 cp "$DIST/$sub" "s3://$SITE_BUCKET/$sub" --region "$REGION" \
-      --recursive --exclude "*" --include "*.$ext" \
+      --recursive --exclude "*" --include "*.$ext" "${skips[@]}" \
       --content-type "$ctype" --cache-control "$cc" --only-show-errors
   done
 }
@@ -416,7 +421,14 @@ upload_tree() {  # $1 = subdir under dist,  $2 = Cache-Control
 say "── upload: immutable trees"
 upload_tree assets "$IMMUTABLE_CC"
 upload_tree cesium "$IMMUTABLE_CC"
-upload_tree data   "$IMMUTABLE_CC"
+# EVERY entry point is excluded here and uploaded later with no-cache. Two
+# reasons, the second learned the hard way on 4 Sep 2026:
+#   1. An entry point must never carry immutable headers, not even briefly.
+#   2. This bulk upload would otherwise overwrite the LIVE catalogue with the
+#      repo's copy before the merge step below has read it — so the merge read a
+#      file it had itself just clobbered, concluded the site had no daily runs,
+#      and erased a published run from latent-sky.dev.
+upload_tree data   "$IMMUTABLE_CC" "web/catalogue.json" "web/*manifest.json"
 
 say "── upload: root files"
 for f in "$DIST"/*; do
