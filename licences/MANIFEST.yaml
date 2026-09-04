@@ -29,6 +29,15 @@ assets:
     checked_on: 2026-07-30
     redistributable: true
 
+  # The convection-allowing model behind the US events and the daily run. Licence
+  # read from the Hugging Face model card's own metadata on the date below, not
+  # inferred from its siblings.
+  - name: stormcast-v1-era5-hrrr
+    uri: hf://nvidia/stormcast-v1-era5-hrrr
+    licence: Apache-2.0
+    checked_on: 2026-09-04
+    redistributable: true
+
   - name: era5-arco
     uri: gs://gcp-public-data-arco-era5
     licence: CC-BY-4.0

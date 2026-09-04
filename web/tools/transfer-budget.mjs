@@ -114,18 +114,60 @@ if (existsSync(join(DIST, "cesium"))) {
   addGroup("cesium static (dist/cesium — all of it; a session fetches less)", join(DIST, "cesium"));
 }
 
+// WHAT A VISITOR ACTUALLY FETCHES, which is the app plus ONE event — not every
+// event on the site. The budget was written when there was a single event and
+// summing data/web was the same thing; once a catalogue landed it stopped being,
+// and the gate began charging one visitor for four other events they will never
+// open. So each event is measured by resolving its own manifest — the exact files
+// the browser requests — rather than by guessing from directory names, which
+// mis-attributes the shared basemap and the global event's layer tree.
+const resolveEvent = (manifestRel) => {
+  const mPath = join(DATA, manifestRel);
+  if (!existsSync(mPath)) return null;
+  const m = JSON.parse(readFileSync(mPath, "utf8"));
+  const base = dirname(mPath);
+  const rels = new Set();
+  for (const layer of Object.values(m.layers ?? {})) {
+    for (const f of layer.frames ?? []) rels.add(f);
+    if (layer.lut) rels.add(layer.lut);
+  }
+  for (const k of ["global", "hero"]) if (m.basemap?.[k]) rels.add(m.basemap[k]);
+  let files = 1, raw = 0, transfer = 0;
+  const [, mr, mt] = measure_file(mPath);
+  raw += mr; transfer += mt;
+  for (const rel of rels) {
+    const p = join(base, rel);
+    if (!existsSync(p)) continue;
+    const [f, r, t] = measure_file(p);
+    files += f; raw += r; transfer += t;
+  }
+  return { files, raw, transfer };
+};
+
 let dataPresent = false;
+const events = [];
 if (existsSync(DATA)) {
   dataPresent = true;
-  for (const entry of readdirSync(DATA, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-    const p = join(DATA, entry.name);
-    const [f, r, t] = entry.isDirectory() ? measure(p) : measure_file(p);
-    groups.push({ label: `data/web/${entry.name}${entry.isDirectory() ? "/" : ""}`, files: f, raw: r, transfer: t });
+  const catPath = join(DATA, "catalogue.json");
+  const [, cr, ct] = measure_file(catPath);
+  if (existsSync(catPath)) groups.push({ label: "data/web/catalogue.json (every session)", files: 1, raw: cr, transfer: ct });
+  const entries = existsSync(catPath)
+    ? JSON.parse(readFileSync(catPath, "utf8")).events.map((e) => ({ id: e.id, manifest: e.manifest }))
+    : [{ id: "manifest.json", manifest: "manifest.json" }];
+  for (const e of entries) {
+    const m = resolveEvent(e.manifest);
+    if (m) events.push({ label: `event ${e.id}`, ...m });
   }
 }
 
-const total = groups.reduce((a, g) => a + g.transfer, 0);
-const totalRaw = groups.reduce((a, g) => a + g.raw, 0);
+const heaviest = events.reduce((a, b) => (b.transfer > (a?.transfer ?? -1) ? b : a), null);
+for (const e of events) {
+  groups.push({ ...e, label: `${e.label}${e === heaviest ? "  <- worst case, counted" : "  (a session does not load this)"}` });
+}
+
+const counted = (g) => !g.label.endsWith("(a session does not load this)");
+const total = groups.filter(counted).reduce((a, g) => a + g.transfer, 0);
+const totalRaw = groups.filter(counted).reduce((a, g) => a + g.raw, 0);
 const ceiling = Math.round(CEILING_MB * MB);
 
 const W = Math.max(...groups.map((g) => g.label.length), "TOTAL (transfer)".length) + 2;
@@ -138,7 +180,10 @@ for (const g of groups) {
   console.log(`  ${g.label.padEnd(W)} ${String(g.files).padStart(5)} ${fmt(g.raw)} ${fmt(g.transfer)}`);
 }
 console.log("  " + "-".repeat(W + 24));
-console.log(`  ${"TOTAL (transfer)".padEnd(W)} ${" ".repeat(5)} ${fmt(totalRaw)} ${fmt(total)}`);
+if (events.length > 1) {
+  console.log(`  ${`(${events.length} events on the site; a session loads exactly one)`.padEnd(W)}`);
+}
+console.log(`  ${"TOTAL (worst-case session)".padEnd(W)} ${" ".repeat(5)} ${fmt(totalRaw)} ${fmt(total)}`);
 console.log(`  ${"CEILING".padEnd(W)} ${" ".repeat(5)} ${" ".repeat(8)} ${fmt(ceiling)}`);
 
 if (!dataPresent) {
