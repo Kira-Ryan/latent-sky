@@ -158,9 +158,12 @@ PYEOF
       --live-url "https://latent-sky.dev/?event=$PREV_EVENT_ID"
     uv run python pipeline/tools/fss_report.py --results /prev/fss.json --out /prev/report-fragment.html \
       --site-out "/prev/daily-$PREV_DATE.html"
+    # --fss carries the scorer's headline figure into the manifest, so the globe
+    # states the measured result rather than only linking to it.
     uv run python -m latentsky.encode_stormcast --zarr /prev/daily.zarr --event-config "$CFG" \
       --init "$PREV_INIT" --event-id "$PREV_EVENT_ID" --mrms /prev/mrms.npz $(member_args /prev "$PM") \
-      --tiles "$TILES" --report-url "/verification/daily-$PREV_DATE.html" --out "/prev/site/$PREV_EVENT_ID"
+      --tiles "$TILES" --report-url "/verification/daily-$PREV_DATE.html" --fss /prev/fss.json \
+      --out "/prev/site/$PREV_EVENT_ID"
     tar czf /prev/site.tar.gz -C /prev/site "$PREV_EVENT_ID"
     # Report and results FIRST: the site tar is what links the report publicly.
     put "/prev/daily-$PREV_DATE.html" "$PUT_PREV_REPORT"

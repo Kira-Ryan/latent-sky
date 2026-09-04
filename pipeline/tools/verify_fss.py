@@ -96,6 +96,11 @@ def main(argv: list[str] | None = None) -> None:
         print(f"ensemble: {members.shape[0]} members, seeds {member_seeds}")
 
     results = verify.score(fc, obs, fc_times, grid, members=members)
+    # The single figure the site shows without anyone opening the report.
+    results["headline"] = verify.headline(results)
+    h = results["headline"]
+    print(f"headline: useful skill at {h['usefulScaleKm'] or 'no'} km for {h['usefulHours']} of "
+          f"{h['scoredHours']} scored hours at {h['thresholdDbz']} dBZ")
     results["member_seeds"] = member_seeds
     results["single_run_seed"] = hero.attrs.get("seed")
     from datetime import datetime, timezone

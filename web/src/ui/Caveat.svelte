@@ -6,6 +6,26 @@
   // radar coverage — so the whole line is absent rather than reassuring.
   const state = $derived(sky.manifest?.run.verification);
   const report = $derived(sky.manifest?.run.reportUrl);
+
+  /**
+   * The measured result, in a sentence, so a visitor who never opens the report
+   * still sees that the claim was tested and how it went. Every number comes
+   * from the scorer's own output; nothing here is typed.
+   *
+   * The wording leads with the limitation rather than the achievement, because
+   * that is what the figure actually says: skill at a ~100 km neighbourhood is
+   * mesoscale placement, not storm-scale, and a reader who takes "useful skill"
+   * as "it got the storms right" has been misled by omission.
+   */
+  const measured = $derived.by(() => {
+    const s = sky.manifest?.run.verificationSummary;
+    if (!s) return "";
+    const hours = `${s.usefulHours} of ${s.scoredHours} hours`;
+    if (s.usefulScaleKm === null) {
+      return `No useful skill at ${s.thresholdDbz} dBZ at any scale up to ${Math.round(s.largestScaleKm)} km.`;
+    }
+    return `Useful skill at ${s.thresholdDbz} dBZ only at ${Math.round(s.usefulScaleKm)} km neighbourhoods, ${hours}.`;
+  });
 </script>
 
 <!-- The caveat lives in the UI, not just the README (§13). Always visible,
@@ -23,6 +43,7 @@
   <p class="verification">
     {#if state === "scored"}
       <strong>Scored against MRMS radar.</strong>
+      {#if measured}<span class="measured">{measured}</span>{/if}
       {#if report}
         <a href={report} target="_blank" rel="noopener noreferrer">Read the verification.</a>
       {/if}
@@ -64,6 +85,12 @@
   .verification strong {
     font-weight: 600;
     color: var(--text);
+  }
+
+  /* The measured figure sits between the claim and the link, in tabular
+     numerals so the digits do not wobble when the event changes. */
+  .measured {
+    font-variant-numeric: tabular-nums;
   }
 
   .verification a {

@@ -29,7 +29,20 @@
         "heroFrame": { "type": "integer", "minimum": 0, "description": "Optional index into frames of the most developed frame — where 'enter the storm' should arrive. The pipeline gates it against frames.length (a JSON schema cannot cross-reference); absent, the UI falls back to the last frame." },
         "placeLabel": { "type": "string", "minLength": 1, "description": "Optional human label for the hero domain, e.g. \"Taiwan · CWA model domain\"." },
         "reportUrl": { "type": "string", "minLength": 1, "description": "Optional URL of this run's verification report page, root-relative on the site (e.g. \"/verification/stormcast-dixie-2025.html\") or absolute. The UI links it from the caveat." },
-        "verification": { "enum": ["pending", "scored"], "description": "Whether this run is enrolled in the observation-scoring loop, and how far it has got. ABSENT means no claim at all — the right value for a run nothing will ever score, such as a Taiwan typhoon with no MRMS coverage. \"pending\" says only that it has not been scored yet, which stays true however long that takes; it is deliberately not a promise about when. \"scored\" requires reportUrl." }
+        "verification": { "enum": ["pending", "scored"], "description": "Whether this run is enrolled in the observation-scoring loop, and how far it has got. ABSENT means no claim at all — the right value for a run nothing will ever score, such as a Taiwan typhoon with no MRMS coverage. \"pending\" says only that it has not been scored yet, which stays true however long that takes; it is deliberately not a promise about when. \"scored\" requires reportUrl." },
+        "verificationSummary": {
+          "type": "object",
+          "description": "The one measured figure the UI states without the viewer opening the report. Emitted from the scorer's own results, never written by hand. Present only when verification is \"scored\".",
+          "required": ["thresholdDbz", "usefulScaleKm", "usefulHours", "scoredHours", "largestScaleKm"],
+          "additionalProperties": false,
+          "properties": {
+            "thresholdDbz": { "type": "integer", "description": "Reflectivity threshold the skill was measured at." },
+            "usefulScaleKm": { "type": ["number", "null"], "description": "Smallest neighbourhood width reaching useful skill (0.5 + f0/2). NULL means the run never reached it at any tested scale — a real result that must be shown, not omitted." },
+            "usefulHours": { "type": "integer", "minimum": 0 },
+            "scoredHours": { "type": "integer", "minimum": 1, "description": "Hours scored, excluding spin-up." },
+            "largestScaleKm": { "type": "number", "description": "The largest neighbourhood tested, so \"none at any scale\" can say up to what." }
+          }
+        }
       }
     },
     "frames": {

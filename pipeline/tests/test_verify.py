@@ -77,3 +77,45 @@ def test_km_between():
 
 def test_to_180():
     assert list(verify.to_180(np.array([250.37, 274.58, 116.0]))) == pytest.approx([-109.63, -85.42, 116.0])
+
+
+def _results(by_window, useful=0.5, windows=(2.4, 12.0, 26.3, 50.3, 98.2), leads=None):
+    """A results dict shaped like score()'s, with FSS values we choose."""
+    n = leads if leads is not None else len(by_window)
+    return {
+        "windows_km": list(windows),
+        "leads": [
+            {"lead_h": h, "fss": {"40": {"by_window": list(by_window[h]), "fss_useful": useful}}}
+            for h in range(n)
+        ],
+    }
+
+
+def test_headline_reports_the_smallest_useful_scale():
+    # Useful only at the two largest windows, and only in the later hours.
+    rows = [[0.1, 0.2, 0.3, 0.4, 0.45]] * 2 + [[0.1, 0.2, 0.3, 0.45, 0.9]] * 3
+    h = verify.headline(_results(rows))
+    assert h["usefulScaleKm"] == 98.2
+    assert h["usefulHours"] == 3 and h["scoredHours"] == 3
+
+
+def test_headline_excludes_the_spin_up_hours():
+    """A model handed an analysis scores trivially against it before it has done
+    any work; counting those hours would flatter the run."""
+    rows = [[0.99] * 5, [0.99] * 5] + [[0.1] * 5] * 3
+    h = verify.headline(_results(rows))
+    assert h["usefulScaleKm"] is None, "spin-up hours leaked into the headline"
+    assert h["scoredHours"] == 3
+
+
+def test_headline_says_none_rather_than_omitting_it():
+    """No useful skill at any scale is a real result and must be publishable."""
+    h = verify.headline(_results([[0.1] * 5] * 5))
+    assert h["usefulScaleKm"] is None
+    assert h["usefulHours"] == 0
+    assert h["largestScaleKm"] == 98.2
+
+
+def test_headline_prefers_the_smallest_scale_that_works():
+    rows = [[0.1, 0.9, 0.9, 0.9, 0.9]] * 5
+    assert verify.headline(_results(rows))["usefulScaleKm"] == 12.0

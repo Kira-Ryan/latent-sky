@@ -5716,6 +5716,13 @@
    }
   }
  ],
+ "headline": {
+  "thresholdDbz": 40,
+  "usefulScaleKm": 98.2,
+  "usefulHours": 7,
+  "scoredHours": 17,
+  "largestScaleKm": 98.2
+ },
  "member_seeds": [
   20250314,
   20250315,
@@ -5733,7 +5740,7 @@
   "init": "2025-03-14T18:00:00Z",
   "nsteps": 18,
   "live_url": "https://latent-sky.dev/?event=us-dixie-2025",
-  "scored_at": "2026-09-03T09:41:34Z",
+  "scored_at": "2026-09-04T12:00:18Z",
   "mrms_worst_offset_s": 43.0
  },
  "member0_vs_single_max_abs_diff": 0.0

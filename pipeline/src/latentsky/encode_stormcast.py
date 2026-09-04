@@ -48,6 +48,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import pathlib
 import shutil
 import time
@@ -169,6 +170,7 @@ def encode_layers(
     member_paths: list[pathlib.Path] = (),
     init_override: str | None = None,
     report_url: str | None = None,
+    fss_path: pathlib.Path | None = None,
 ) -> None:
     t0 = time.perf_counter()
     out_dir = pathlib.Path(out_dir)
@@ -402,11 +404,27 @@ def encode_layers(
     if verification not in (None, "pending", "scored"):
         raise EncodeStormcastError(f"config verification must be pending/scored, got {verification!r}")
 
+    # The headline figure travels from the scorer's own results file into the
+    # manifest, so the number on the globe is the number in the report by
+    # construction rather than by anyone remembering to update it.
+    summary = None
+    if fss_path is not None:
+        results = json.loads(pathlib.Path(fss_path).read_text(encoding="utf-8"))
+        summary = results.get("headline")
+        if summary is None:
+            raise EncodeStormcastError(f"{fss_path} carries no headline block — re-run verify_fss")
+        if verification != "scored":
+            raise EncodeStormcastError(
+                "a results file was given but this run is not marked scored; a headline figure "
+                "must never appear beside a run whose verification has not been published"
+            )
+
     run = {
         "id": event_id or cfg.get("id") or pathlib.Path(event_config).stem,
         "kind": "forecast",
         "init": init_iso,
         **({"verification": verification} if verification else {}),
+        **({"verificationSummary": summary} if summary else {}),
         "model": {
             "prognostic": "NVIDIA StormCast v1, 3 km convection-allowing over the "
                           "central US (Apache-2.0 checkpoint), initialised from HRRR",
@@ -504,13 +522,16 @@ def main(argv: list[str] | None = None) -> None:
                     help="override the event config's init (ISO); pairs with forecast_stormcast --init")
     ap.add_argument("--report-url", default=None,
                     help="override the config's report link (a daily run names its page per day)")
+    ap.add_argument("--fss", type=pathlib.Path, default=None,
+                    help="verify_fss results JSON; its headline figure is copied into the manifest "
+                         "so the site can state one measured number without the viewer opening the report")
     args = ap.parse_args(argv)
     encode_layers(
         args.zarr, args.out, args.event_config,
         config=args.config, lut_dir=args.luts, event_id=args.event_id,
         mrms_path=args.mrms, member_paths=args.member,
         tiles_dir=args.tiles, coastline_path=args.coastline, init_override=args.init,
-        report_url=args.report_url,
+        report_url=args.report_url, fss_path=args.fss,
     )
 
 

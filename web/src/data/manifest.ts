@@ -33,6 +33,18 @@ export interface RunInfo {
    * the correct state for a typhoon outside radar coverage.
    */
   verification?: "pending" | "scored";
+  /**
+   * The one measured figure the UI states inline. Emitted by the scorer, never
+   * written by hand, so what the globe says is what the report computed.
+   */
+  verificationSummary?: {
+    thresholdDbz: number;
+    /** null when the run never reached useful skill at any tested scale. */
+    usefulScaleKm: number | null;
+    usefulHours: number;
+    scoredHours: number;
+    largestScaleKm: number;
+  };
 }
 
 export interface LayerDef {
@@ -144,6 +156,32 @@ export async function loadManifest(url: string): Promise<Manifest> {
   return parseManifest(raw, baseUrl);
 }
 
+/**
+ * The scorer's headline figure, or undefined.
+ *
+ * A malformed summary yields undefined rather than a partial one: a sentence
+ * built from half a measurement would be a claim nobody made. `usefulScaleKm`
+ * is legitimately null (the run reached useful skill at no tested scale) and
+ * that case must survive, because it is the result most worth publishing.
+ */
+function parseVerificationSummary(raw: unknown): RunInfo["verificationSummary"] {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const s = raw as Record<string, unknown>;
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+  const thresholdDbz = num(s.thresholdDbz);
+  const usefulHours = num(s.usefulHours);
+  const scoredHours = num(s.scoredHours);
+  const largestScaleKm = num(s.largestScaleKm);
+  const usefulScaleKm = s.usefulScaleKm === null ? null : num(s.usefulScaleKm);
+  if (
+    thresholdDbz === undefined || usefulHours === undefined ||
+    scoredHours === undefined || largestScaleKm === undefined || usefulScaleKm === undefined
+  ) {
+    return undefined;
+  }
+  return { thresholdDbz, usefulScaleKm, usefulHours, scoredHours, largestScaleKm };
+}
+
 export function parseManifest(raw: unknown, baseUrl: URL): Manifest {
   const root = requireRecord(raw, "$");
   if (root.schemaVersion !== 1) fail("$.schemaVersion", `expected 1, got ${JSON.stringify(root.schemaVersion)}`);
@@ -171,6 +209,7 @@ export function parseManifest(raw: unknown, baseUrl: URL): Manifest {
       runRaw.verification === "pending" || runRaw.verification === "scored"
         ? runRaw.verification
         : undefined,
+    verificationSummary: parseVerificationSummary(runRaw.verificationSummary),
   };
 
   if (!Array.isArray(root.frames) || root.frames.length < 1) fail("$.frames", "expected non-empty array");

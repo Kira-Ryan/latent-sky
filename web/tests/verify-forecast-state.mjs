@@ -43,7 +43,10 @@ const CASES = [
     label: "case study, scored against radar",
     expect: {
       masthead: /^Forecast issued 14 Mar 2025, 18:00 UTC/,
-      verification: /^Scored against MRMS radar\.\s*Read the verification\.$/,
+      // The measured figure must be stated inline, and it must lead with the
+      // limitation: a visitor who never opens the report should still learn that
+      // the skill is mesoscale, not storm-scale.
+      verification: /^Scored against MRMS radar\.\s*Useful skill at 40 dBZ only at 98 km neighbourhoods, 7 of 17 hours\.\s*Read the verification\.$/,
       lead: /· \+10 h$/,
       frameZero: /· analysis$/,
       noReportLink: false,

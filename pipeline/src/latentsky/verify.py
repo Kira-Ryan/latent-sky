@@ -166,6 +166,33 @@ def mrms_on_grid(npz_path: pathlib.Path, grid):
 
 # ------------------------------------------------------------------ the scoring
 
+def headline(results: dict, threshold: float = 40.0, spin_up_leads: int = 2) -> dict:
+    """The one honest figure a viewer should see without opening the report.
+
+    The smallest neighbourhood at which this run reaches useful skill (Roberts &
+    Lean's 0.5 + f0/2) at `threshold`, and for how many of the scored hours. The
+    first `spin_up_leads` hours are excluded: a convection-allowing model handed
+    an analysis scores trivially well against it before it has done any work, and
+    counting those hours would flatter the run.
+
+    `useful_scale_km` is None when the run never reaches useful skill at any
+    tested scale, which is a real and publishable answer — the field must be
+    rendered as "none at any scale", never quietly omitted.
+    """
+    leads = [r for r in results["leads"] if r["lead_h"] >= spin_up_leads]
+    key = str(int(threshold))
+    windows = results["windows_km"]
+    for i, km in enumerate(windows):
+        hours = sum(1 for r in leads if r["fss"][key]["by_window"][i] >= r["fss"][key]["fss_useful"])
+        if hours:
+            return {"thresholdDbz": int(threshold), "usefulScaleKm": round(km, 1),
+                    "usefulHours": hours, "scoredHours": len(leads),
+                    "largestScaleKm": round(windows[-1], 1)}
+    return {"thresholdDbz": int(threshold), "usefulScaleKm": None,
+            "usefulHours": 0, "scoredHours": len(leads),
+            "largestScaleKm": round(windows[-1], 1)}
+
+
 def score(
     fc: np.ndarray,
     obs: np.ndarray,
