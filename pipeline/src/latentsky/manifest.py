@@ -47,6 +47,7 @@ _HINT_KEYS = {
     "place_label": "placeLabel",
     "report": "reportUrl",
     "default_variable": "defaultVariable",
+    "invitation": "invitation",
 }
 
 

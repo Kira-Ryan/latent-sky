@@ -45,11 +45,15 @@
       <strong>Scored against MRMS radar.</strong>
       {#if measured}<span class="measured">{measured}</span>{/if}
       {#if report}
-        <a href={report} target="_blank" rel="noopener noreferrer">Read the verification.</a>
+        <a href={report}>Read the verification.</a>
       {/if}
     {:else}
       <strong>Not yet scored.</strong>
       Published before the weather happened, and measured against radar afterwards.
+      <!-- A cold visitor lands on the newest run, which is by definition unscored,
+           so without this the site's whole verification record is unreachable from
+           the page everyone arrives on. -->
+      <a href="/verification/index.html">See the runs that have been scored.</a>
     {/if}
   </p>
 {/if}

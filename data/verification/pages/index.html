@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verifications &middot; Latent Sky</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f2f4f7; --panel: #ffffff;
+    --ink: #121a2c; --ink-2: #4a566e; --ink-3: #7b869a;
+    --line: #d5dbe5; --grid: #e6eaf0; --accent: #0e8386;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0d1420; --panel: #141d2c;
+      --ink: #e9eef6; --ink-2: #b1bccd; --ink-3: #7f8ba0;
+      --line: #253349; --grid: #1d2a3d; --accent: #45c5c7;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0d1420; --panel: #141d2c;
+    --ink: #e9eef6; --ink-2: #b1bccd; --ink-3: #7f8ba0;
+    --line: #253349; --grid: #1d2a3d; --accent: #45c5c7;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; font-size: 15.5px; line-height: 1.6; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 40px 24px 64px; }
+  a { color: var(--accent); text-decoration: none; }
+  .topnav { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin: 0 0 18px; padding-bottom: 12px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .topnav .home { font-family: "Barlow Condensed", "Arial Narrow", sans-serif; font-weight: 600; font-size: 17px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink); }
+  .topnav .home:hover { color: var(--accent); }
+  .topnav .sep { color: var(--ink-3); }
+  .topnav .globe { margin-left: auto; border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+  .eyebrow { font-family: "Barlow Condensed", sans-serif; font-weight: 600; font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+  h1 { font-family: "Barlow Condensed", "Arial Narrow", sans-serif; font-weight: 600; font-size: 42px; line-height: 1.05; margin: 6px 0 14px; }
+  .dek { font-size: 17px; color: var(--ink-2); max-width: 66ch; margin: 0 0 26px; text-wrap: pretty; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th { font-family: "Barlow Condensed", sans-serif; font-weight: 600; font-size: 12.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); border-bottom: 1px solid var(--line); }
+  tr:last-child td { border-bottom: 0; }
+  td.num { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  td.result { white-space: normal; color: var(--ink-2); min-width: 22ch; }
+  .none { color: var(--ink-3); }
+  .empty { padding: 26px; color: var(--ink-2); }
+  footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-3); display: flex; flex-wrap: wrap; gap: 6px 24px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="topnav">
+    <a class="home" href="/">Latent Sky</a>
+    <span class="sep" aria-hidden="true">&middot;</span>
+    <span>Verifications</span>
+    <a class="globe" href="/">Back to the globe</a>
+  </nav>
+  <div class="eyebrow">Latent Sky</div>
+  <h1>Every run, scored against what happened</h1>
+  <p class="dek">Each forecast here was published before the weather it describes, then measured
+  against observed radar afterwards with the Fractions Skill Score and republished with the
+  observations beside it. The results are what they are.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Run</th><th>Initialised</th><th>Result</th><th>Ensemble</th><th></th></tr></thead>
+      <tbody>
+        <tr><td><a href="https://latent-sky.dev/?event=us-dixie-2025">us-dixie-2025</a></td><td class="num">2025-03-14 18:00Z</td><td class="result">Useful at 98 km, 7 of 17 h &middot; 40 dBZ</td><td>8 members</td><td><a href="/verification/stormcast-dixie-2025.html">Read</a></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>
+    <span>Kira Ryan &middot; <a href="/">latent-sky.dev</a></span>
+    <span>1 run scored</span>
+  </footer>
+</div>
+</body>
+</html>

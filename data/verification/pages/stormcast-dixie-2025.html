@@ -40,6 +40,16 @@
   body { margin: 0; background: var(--bg); color: var(--ink); font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; font-size: 15.5px; line-height: 1.6; }
   .wrap { max-width: 900px; margin: 0 auto; padding: 40px 24px 64px; }
   .eyebrow { font-family: "Barlow Condensed", "Arial Narrow", sans-serif; font-weight: 600; font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+  .topnav { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin: 0 0 18px; padding-bottom: 12px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .topnav a { border-bottom: none; }
+  .topnav .home { font-family: "Barlow Condensed", "Arial Narrow", sans-serif; font-weight: 600; font-size: 17px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink); }
+  .topnav .home:hover, .topnav .home:focus-visible { color: var(--accent); }
+  .topnav .sep { color: var(--ink-3); }
+  /* The run link is the useful one and sits to the right on a wide screen. */
+  .topnav .run { margin-left: auto; }
+  .topnav .index, .topnav .run { color: var(--accent); border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+  .topnav .index:hover, .topnav .run:hover { border-bottom-color: var(--accent); }
+  @media (max-width: 560px) { .topnav .run { margin-left: 0; } }
   h1 { font-family: "Barlow Condensed", "Arial Narrow", sans-serif; font-weight: 600; font-size: 46px; line-height: 1.02; margin: 6px 0 14px; text-wrap: balance; }
   .dek { font-size: 18px; color: var(--ink-2); max-width: 66ch; margin: 0 0 18px; text-wrap: pretty; }
   .meta { display: flex; flex-wrap: wrap; gap: 6px 22px; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12.5px; color: var(--ink-3); padding: 12px 0 0; border-top: 1px solid var(--line); }
@@ -99,7 +109,19 @@
 <body>
 
 <div class="wrap">
-  <div class="eyebrow">Latent Sky &middot; verification note</div>
+  <!-- Someone arrives here from a link with no idea what site this is. The
+       route home is the first thing on the page, not a metadata entry, and the
+       wordmark is the link because that is where people look for one.
+       index.html is named explicitly: CloudFront applies a default root object
+       at the distribution root only, so a bare /verification/ 404s at S3 and the
+       SPA rewrite hands back the globe instead. -->
+  <nav class="topnav">
+    <a class="home" href="/">Latent Sky</a>
+    <span class="sep" aria-hidden="true">&middot;</span>
+    <a class="index" href="/verification/index.html">All verifications</a>
+    <a class="run" id="nav-run" href="/">Open this run on the globe</a>
+  </nav>
+  <div class="eyebrow">Verification note</div>
   <h1 id="h1">StormCast Against the Radar</h1>
   <p class="dek" id="dek"></p>
   <div class="meta" id="meta"></div>
@@ -182,7 +204,7 @@
   <div class="tablewrap"><table id="tbl"></table></div>
 
   <footer>
-    <span>Kira Ryan &middot; latent-sky.dev</span>
+    <span>Kira Ryan &middot; <a href="/">latent-sky.dev</a></span>
     <span>Model: NVIDIA StormCast v1 &middot; Data: NOAA HRRR, GFS, MRMS (public domain)</span>
     <span id="stamp"></span>
   </footer>
@@ -217,8 +239,12 @@ document.getElementById("meta").innerHTML = [
   `<span><b>window</b> +0 to +${EV.nsteps} h, hourly</span>`,
   `<span><b>domain</b> ${hemi(gs, "N", "S")}&ndash;${hemi(gn, "N", "S")}, ${hemi(gw, "E", "W")}&ndash;${hemi(ge, "E", "W")}</span>`,
   `<span><b>grid</b> ${R.grid.size[0]} &times; ${R.grid.size[1]}, ${R.grid.km_per_px.toFixed(2)} km/px</span>`,
-  EV.live_url ? `<span><b>live</b> <a href="${EV.live_url}">latent-sky.dev</a></span>` : "",
 ].join("");
+// The nav's run link points at the event this report scores; with no live_url
+// it falls back to the home page rather than dangling.
+const navRun = document.getElementById("nav-run");
+navRun.href = EV.live_url || "/";
+navRun.textContent = EV.live_url ? "Open this run on the globe" : "Open the globe";
 
 function firstLead(pred) { for (const r of L) if (pred(r)) return r; return null; }
 const obsOn = firstLead(r => r.coverage["40"].observed >= 0.001);

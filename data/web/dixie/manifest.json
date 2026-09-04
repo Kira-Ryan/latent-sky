@@ -21,7 +21,8 @@
     "heroFrame": 10,
     "placeLabel": "Central US \u00b7 StormCast 3 km domain",
     "reportUrl": "/verification/stormcast-dixie-2025.html",
-    "defaultVariable": "refc"
+    "defaultVariable": "refc",
+    "invitation": "enter the storm"
   },
   "frames": [
     "2025-03-14T18:00:00Z",

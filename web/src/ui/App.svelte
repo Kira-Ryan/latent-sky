@@ -37,6 +37,9 @@
   // the manifest's first-class run.stormName, falling back through
   // stormNameFor()'s caption heuristic. No storm named, no claim made.
   const stormName = $derived(sky.manifest ? stormNameFor(sky.manifest) : "the hero region");
+  // The fallback keeps the original copy for the three shipped case studies,
+  // whose manifests predate the field and whose storms are all real.
+  const inviteAction = $derived(sky.manifest?.run.invitation ?? "enter the storm");
 
   /**
    * The issue line under the wordmark. `nowMs` ticks because $derived reacts to
@@ -353,7 +356,10 @@
       >
         <span class="invite-storm">{stormName}</span>
         <span class="invite-sep" aria-hidden="true">·</span>
-        <span class="invite-action">enter the storm</span>
+        <!-- "enter the storm" is a claim about the data. A live daily run has
+             quiet days, so the encoder derives these words from the run's own
+             peak reflectivity and the UI says what it is given. -->
+        <span class="invite-action">{inviteAction}</span>
       </button>
     {/if}
 

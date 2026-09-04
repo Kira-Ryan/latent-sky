@@ -88,6 +88,32 @@ class EncodeStormcastError(RuntimeError):
 
 PROB_THRESHOLD_DBZ = 40.0
 
+# A 40 dBZ core is the conventional line between showers and a thunderstorm, and
+# it is the same threshold the verification scores, so the word on the button and
+# the number in the report mean the same thing.
+STORM_DBZ = 40.0
+
+
+def invitation_for(hero, nframes: int, native_km: float) -> str:
+    """The action words on the orbit invitation, decided by the run's own data.
+
+    "enter the storm" is a claim. It is true of a named typhoon and of the March
+    2025 outbreak, and it will be false on the first quiet day the live daily run
+    meets — a site whose whole posture is that the copy matches the data cannot
+    invite people into a storm that is not there. So a run with no convective
+    core says what it does have instead: resolution.
+    """
+    arr = hero.get("hero_refc") if hasattr(hero, "get") else None
+    if arr is None:
+        return "enter the storm"
+    peak = max(float(np.nanmax(np.asarray(arr[0, i]))) for i in range(nframes))
+    if peak >= STORM_DBZ:
+        return "enter the storm"
+    km = f"{native_km:g}"
+    print(f"  no convective core in this run (peak {peak:.1f} dBZ) — the invitation says "
+          f"resolution rather than storms")
+    return f"see it at {km} km"
+
 
 def exceedance_probability(fields: np.ndarray, thr: float = PROB_THRESHOLD_DBZ) -> np.ndarray:
     """Percent of members (axis 0) at or above `thr`, per cell.
@@ -419,6 +445,12 @@ def encode_layers(
                 "must never appear beside a run whose verification has not been published"
             )
 
+    # The invitation names what this run actually contains. The config may state
+    # it; otherwise the data decides, so a quiet day cannot advertise a storm.
+    hints = run_hints(cfg)
+    if "invitation" not in hints:
+        hints["invitation"] = invitation_for(hero, nframes, 3.0)
+
     run = {
         "id": event_id or cfg.get("id") or pathlib.Path(event_config).stem,
         "kind": "forecast",
@@ -440,7 +472,7 @@ def encode_layers(
             + (MRMS_NOTE if mrms_path is not None else "")
             + (ENSEMBLE_NOTE.format(n=len(member_paths)) if member_paths else "")
         ),
-        **run_hints(cfg),
+        **hints,
     }
     manifest = build_manifest(
         run, times, records, specs,

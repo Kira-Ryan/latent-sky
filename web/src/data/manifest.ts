@@ -27,6 +27,12 @@ export interface RunInfo {
   placeLabel?: string;
   /** The variable this run should open on; undefined means the UI decides. */
   defaultVariable?: Variable;
+  /**
+   * The action words on the orbit invitation. "enter the storm" is a claim, and
+   * a live daily run has quiet days on which it is false, so the encoder derives
+   * this from the run's own peak reflectivity.
+   */
+  invitation?: string;
   /** This run's verification report page, when one has been published. */
   reportUrl?: string;
   /**
@@ -214,6 +220,10 @@ export function parseManifest(raw: unknown, baseUrl: URL): Manifest {
     defaultVariable: VARIABLES.includes(runRaw.defaultVariable as Variable)
       ? (runRaw.defaultVariable as Variable)
       : undefined,
+    invitation:
+      typeof runRaw.invitation === "string" && runRaw.invitation.trim() !== ""
+        ? runRaw.invitation.trim()
+        : undefined,
     verificationSummary: parseVerificationSummary(runRaw.verificationSummary),
   };
 
