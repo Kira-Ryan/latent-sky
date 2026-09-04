@@ -92,3 +92,40 @@ def test_save_webp_rejects_bad_input(tmp_path):
         encode.save_webp(np.zeros((4, 4, 3), dtype=np.uint8), tmp_path / "x.webp")
     with pytest.raises(ValueError):
         encode.save_webp(np.zeros((4, 4, 4), dtype=np.float32), tmp_path / "x.webp")
+
+
+def test_lossless_webp_uses_maximum_compression_effort():
+    """`quality` on lossless WebP is libwebp's EFFORT knob, and Pillow defaults it
+    to 80. The default costs ~26% of every frame's bytes for identical pixels, so
+    the setting is pinned here: a refactor that drops it silently inflates the
+    whole site's payload and nothing else would notice."""
+    import inspect
+    src = inspect.getsource(encode.save_webp)
+    assert "quality=100" in src, "save_webp lost its compression-effort setting"
+    assert "exact=True" in src, "save_webp lost exact-alpha, which corrupts transparent pixels"
+
+
+def test_effort_setting_actually_shrinks_frames_without_changing_them(tmp_path):
+    import io
+    import numpy as np
+    from PIL import Image
+
+    rng = np.random.default_rng(7)
+    # Structured, not pure noise: noise is incompressible and would hide the effect.
+    base = np.zeros((256, 256, 4), dtype=np.uint8)
+    yy, xx = np.mgrid[0:256, 0:256]
+    base[..., 0] = (yy // 8 * 8).astype(np.uint8)
+    base[..., 1] = (xx // 8 * 8).astype(np.uint8)
+    base[..., 2] = ((xx + yy) // 16 * 16).astype(np.uint8)
+    base[..., 3] = np.where(rng.random((256, 256)) > 0.3, 255, 0).astype(np.uint8)
+
+    def encoded(**kw):
+        buf = io.BytesIO()
+        Image.fromarray(base, "RGBA").save(buf, format="WEBP", lossless=True, exact=True, method=6, **kw)
+        return buf.getvalue()
+
+    default, effort = encoded(), encoded(quality=100)
+    assert len(effort) < len(default), "quality=100 did not reduce the frame"
+    for blob in (default, effort):
+        back = np.asarray(Image.open(io.BytesIO(blob)).convert("RGBA"), dtype=np.uint8)
+        assert np.array_equal(base, back), "a lossless encode changed the pixels"

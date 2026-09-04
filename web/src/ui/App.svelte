@@ -205,7 +205,18 @@
         setHeroOverlay: (visible: boolean) => {
           heroOverlayVisible = visible;
         },
-        getView: () => ({ view: sky.view, flying: sky.flying, split: sky.split }),
+        // Enough state for a verifier to assert the RIGHT thing rather than the
+        // thing that happened to be true when it was written: `hasPair` says
+        // whether a reveal exists at all (reflectivity has no coarse
+        // counterpart), and `variable`/`frame` say what is actually on screen.
+        getView: () => ({
+          view: sky.view,
+          flying: sky.flying,
+          split: sky.split,
+          variable: sky.variable,
+          frame: sky.frame,
+          hasPair: sky.hasPair,
+        }),
         requestRender: () => globe?.requestRender(),
       };
 

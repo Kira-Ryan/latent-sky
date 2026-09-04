@@ -40,22 +40,41 @@ await page.waitForFunction(
   null,
   { timeout: 60_000 },
 );
-await page
-  .waitForFunction(
-    () => document.querySelector(".reveal-controls .sweep")?.textContent?.trim() === "Sweep",
-    null,
-    { timeout: 20_000 },
-  )
-  .catch(() => problems.push("arrival sweep never settled"));
+// The reveal exists only where the active variable HAS a pair. Reflectivity on
+// a StormCast run has none and never will — a 25 km global model produces no
+// reflectivity at any resolution — so a run that opens on refc arrives with no
+// wipe and no sweep. Asserting one unconditionally tested the old default
+// rather than the site, and failed the moment a run declared its own opening
+// field. Ask the app what it has, then assert the matching thing.
+const hasPair = await page.evaluate(() => globalThis.__latentSky.getView().hasPair === true);
+if (hasPair) {
+  await page
+    .waitForFunction(
+      () => document.querySelector(".reveal-controls .sweep")?.textContent?.trim() === "Sweep",
+      null,
+      { timeout: 20_000 },
+    )
+    .catch(() => problems.push("arrival sweep never settled"));
+}
 await page.waitForTimeout(1000);
 
 // The pills state the resolution to the viewer — assert they read from the
-// manifest rather than a hardcoded literal.
+// manifest rather than a hardcoded literal. With no pair there is nothing to
+// compare, so there must be NO pills at all: a lone pill would label one side
+// of a comparison that is not being made.
 const pills = await page.evaluate(() => ({
   coarse: document.querySelector(".pill.coarse")?.textContent?.trim() ?? null,
   fine: document.querySelector(".pill.fine")?.textContent?.trim() ?? null,
 }));
-console.log(`pills: coarse="${pills.coarse}" | fine="${pills.fine}"`);
+if (hasPair) {
+  console.log(`pills: coarse="${pills.coarse}" | fine="${pills.fine}"`);
+  if (!pills.coarse || !pills.fine) problems.push("a paired variable rendered no reveal pills");
+} else {
+  console.log(`no pair for the opening variable — reveal correctly absent`);
+  if (pills.coarse || pills.fine) {
+    problems.push(`unpaired variable rendered reveal pills: "${pills.coarse}" / "${pills.fine}"`);
+  }
+}
 
 const lit = await page.evaluate(async () => {
   globalThis.__latentSky.requestRender();
