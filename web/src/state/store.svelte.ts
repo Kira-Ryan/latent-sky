@@ -125,7 +125,18 @@ class SkyStore {
     if (vars.length === 0) throw new Error("manifest declares no renderable layers");
 
     this.manifest = manifest;
-    this.variable = vars.includes("wind10m") ? "wind10m" : vars[0];
+    // The run's own choice first. StormCast exists to produce reflectivity, and
+    // opening a convective run on a 10 m wind field scaled 0-55 m/s for a typhoon
+    // renders a near-empty rectangle on any ordinary day: measured on the 2 Sep
+    // 2026 run, median wind 3.8 m/s at the hero frame, 4% of the colour ramp.
+    // Falls back to wind10m, which is the right opening field for a typhoon.
+    const declared = manifest.run.defaultVariable;
+    this.variable =
+      declared !== undefined && vars.includes(declared)
+        ? declared
+        : vars.includes("wind10m")
+          ? "wind10m"
+          : vars[0];
     this.frame = 0;
     this.playing = false;
     this.speed = 1;

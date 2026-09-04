@@ -46,6 +46,7 @@ _HINT_KEYS = {
     "hero_frame": "heroFrame",
     "place_label": "placeLabel",
     "report": "reportUrl",
+    "default_variable": "defaultVariable",
 }
 
 
@@ -127,6 +128,18 @@ def build_manifest(
             raise ManifestError(
                 f"layer {layer.layer_id}: {len(layer.frames)} frames for "
                 f"{len(frame_times)} frame times"
+            )
+
+    # A declared default variable must exist as a renderable layer, or the UI
+    # would silently fall back and the config's intent would vanish without a
+    # word. Gated here because a JSON schema cannot cross-reference the layers.
+    wanted = run.get("defaultVariable")
+    if wanted is not None:
+        available = {layer.variable for layer in layers if layer.kind in ("global", "hero-fine")}
+        if wanted not in available:
+            raise ManifestError(
+                f"run.defaultVariable {wanted!r} has no global or hero-fine layer in this run "
+                f"(emitted: {sorted(available)})"
             )
 
     by_id = {layer.layer_id: layer for layer in layers}

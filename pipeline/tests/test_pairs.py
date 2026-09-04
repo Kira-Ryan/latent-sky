@@ -60,3 +60,23 @@ def test_dangling_pair_is_refused(specs, lut_dir):
     prob = _record(specs["prob40"], sha, "prob40-fine", "hero-fine", pair_with="nowhere")
     with pytest.raises(manifest.ManifestError, match="not a layer id"):
         manifest.build_manifest(RUN, TIMES, [prob], specs)
+
+
+def test_a_declared_default_variable_must_have_a_layer(specs, lut_dir):
+    """The UI would silently fall back, so the config's intent would vanish
+    without a word. Fail the build instead."""
+    _, sha = encode.load_lut(lut_dir / specs["refc"].lut_filename)
+    refc = _record(specs["refc"], sha, "refc-fine", "hero-fine")
+    with pytest.raises(manifest.ManifestError, match="defaultVariable"):
+        manifest.build_manifest({**RUN, "defaultVariable": "wind10m"}, TIMES, [refc], specs)
+    m = manifest.build_manifest({**RUN, "defaultVariable": "refc"}, TIMES, [refc], specs)
+    assert m["run"]["defaultVariable"] == "refc"
+
+
+def test_an_observed_only_variable_cannot_be_the_default(specs, lut_dir):
+    """hero-observed is the radar, not the model's output: opening on it would
+    present observations as the forecast."""
+    _, sha = encode.load_lut(lut_dir / specs["refc"].lut_filename)
+    obs = _record(specs["refc"], sha, "refc-observed", "hero-observed")
+    with pytest.raises(manifest.ManifestError, match="defaultVariable"):
+        manifest.build_manifest({**RUN, "defaultVariable": "refc"}, TIMES, [obs], specs)

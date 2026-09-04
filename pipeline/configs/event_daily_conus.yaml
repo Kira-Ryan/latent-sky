@@ -36,3 +36,8 @@ framing_note: >-
 # scored with a link); nothing here promises a date, because a promise baked
 # into published data cannot retract itself when a scoring pass fails.
 verification: pending
+
+# The field this run opens on. StormCast's headline output is reflectivity and it
+# is what the verification scores; a 10 m wind field on the global 0-55 m/s scale
+# is nearly empty on an ordinary continental day.
+default_variable: refc

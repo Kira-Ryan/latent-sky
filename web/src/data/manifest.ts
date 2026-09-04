@@ -25,6 +25,8 @@ export interface RunInfo {
   heroFrame?: number;
   /** Human label for the hero domain, e.g. "Taiwan · CWA model domain". */
   placeLabel?: string;
+  /** The variable this run should open on; undefined means the UI decides. */
+  defaultVariable?: Variable;
   /** This run's verification report page, when one has been published. */
   reportUrl?: string;
   /**
@@ -209,6 +211,9 @@ export function parseManifest(raw: unknown, baseUrl: URL): Manifest {
       runRaw.verification === "pending" || runRaw.verification === "scored"
         ? runRaw.verification
         : undefined,
+    defaultVariable: VARIABLES.includes(runRaw.defaultVariable as Variable)
+      ? (runRaw.defaultVariable as Variable)
+      : undefined,
     verificationSummary: parseVerificationSummary(runRaw.verificationSummary),
   };
 

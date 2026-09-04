@@ -20,7 +20,8 @@
     "stormName": "14 March 2025 tornado outbreak",
     "heroFrame": 10,
     "placeLabel": "Central US \u00b7 StormCast 3 km domain",
-    "reportUrl": "/verification/stormcast-dixie-2025.html"
+    "reportUrl": "/verification/stormcast-dixie-2025.html",
+    "defaultVariable": "refc"
   },
   "frames": [
     "2025-03-14T18:00:00Z",

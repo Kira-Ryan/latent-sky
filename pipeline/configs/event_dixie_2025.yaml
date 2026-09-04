@@ -49,3 +49,8 @@ hero_frame: 4
 framing_note: >-
   This is a hindcast of the 14-15 March 2025 outbreak, run after the fact:
   the outcome is known, and the point is what the model produces.
+
+# The field this run opens on. StormCast's headline output is reflectivity and it
+# is what the verification scores; a 10 m wind field on the global 0-55 m/s scale
+# is nearly empty on an ordinary continental day.
+default_variable: refc
