@@ -195,3 +195,24 @@ def test_a_clean_day_says_nothing(monkeypatch):
     }))
     monkeypatch.setattr(lc, "url_ok", lambda u: True)
     assert lc.audit_day("2026-09-03", "2026-09-02") == []
+
+
+def test_the_audit_scores_the_day_the_pod_was_told_to_score(monkeypatch):
+    """The false alarm of 4 Sep 2026: 3 Sep had no forecast, the lookback sent the
+    pod to score 2 Sep, and the audit — assuming "yesterday" — reported that 3 Sep
+    'was due to be scored and was not'. The claim names the day; the audit must
+    read it rather than assume."""
+    import json
+    monkeypatch.setattr(lc, "s3", FakeS3({
+        "daily/2026-09-04/launched.json": json.dumps({"state": "launched", "pod_id": "p", "scores_prev": True,
+                                                      "prev_date": "2026-09-02"}).encode(),
+        "daily/2026-09-04/site.tar.gz": b"x",
+        "daily/2026-09-04/published.json": b"{}",
+        "daily/2026-09-04/finished.json": json.dumps({"status": "ok", "forecast_rc": 0, "scoring_rc": 0}).encode(),
+        "daily/2026-09-02/scored.json": b"{}",     # what was actually scored
+        # and nothing at all for 2026-09-03
+    }))
+    checked = []
+    monkeypatch.setattr(lc, "url_ok", lambda u: checked.append(u) or True)
+    assert lc.audit_day("2026-09-04", "2026-09-03") == []
+    assert checked == [f"{lc.SITE_URL}/verification/daily-2026-09-02.html"], "the report link checked must be the scored day's"

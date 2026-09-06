@@ -194,6 +194,10 @@ def audit_day(date: str, prev: str) -> list[str]:
                             f"Log tail:\n{log_tail(date)}")
 
         if claim.get("scores_prev"):
+            # The day the pod was told to score is in the claim; it is yesterday
+            # only when yesterday had a forecast. Auditing "yesterday" regardless
+            # accused a day that had no run of not being scored (4 Sep 2026).
+            prev = claim.get("prev_date") or prev
             if not exists(f"daily/{prev}/scored.json"):
                 problems.append(f"{prev}: was due to be scored against radar in today's pod and was not.\n"
                                 f"Log tail:\n{log_tail(date)}")

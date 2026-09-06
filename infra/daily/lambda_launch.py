@@ -271,6 +271,16 @@ def handler(event, context):
             "PUT_PREV_REPORT": presign_put(f"daily/{prev_date}/report.html"),
             "PUT_PREV_FSS": presign_put(f"daily/{prev_date}/fss.json"),
         })
+        # The claim must name the day the pod was actually told to score. plan()
+        # wrote "yesterday"; the lookback may have chosen an older day, and the
+        # deadman audits the claim — so a claim that said 3 Sep while the pod
+        # scored 2 Sep raised a false "was not scored" alarm on 4 Sep 2026.
+        claim.update({"prev_date": prev_date, "prev_init": env["PREV_INIT"],
+                      "prev_event_id": env["PREV_EVENT_ID"]})
+    else:
+        # Nothing to score: say so, rather than leaving yesterday's name in place.
+        for k in ("prev_date", "prev_init", "prev_event_id"):
+            claim[k] = None
 
     try:
         pod = create_pod(env, f"latentsky-daily-{p['date']}")

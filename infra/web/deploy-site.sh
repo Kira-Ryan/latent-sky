@@ -522,6 +522,36 @@ else
   exit 1
 fi
 
+# ── Analytics beacon (optional) ───────────────────────────────────────────────
+# Cloudflare Web Analytics: one deferred script, no cookies, no consent banner
+# needed, a dashboard of pages / referrers / countries / devices. Injected at
+# deploy time — not at build time — so the dev server, the smoke tests and CI
+# never load a third-party script, and so the token lives in latentsky.env
+# beside the other deployment facts rather than in the repository. Its absence
+# is a normal state (nothing is injected, and the verify step says so), never
+# an error. The CloudFront access logs (setup-analytics.sh) are the ground
+# truth this dashboard is a convenience on top of.
+BEACON_TOKEN="${CF_BEACON_TOKEN:-}"
+if [[ -n "$BEACON_TOKEN" ]]; then
+  [[ "$BEACON_TOKEN" =~ ^[0-9a-f]{20,64}$ ]] || { say "REFUSING: CF_BEACON_TOKEN does not look like a Cloudflare beacon token (expected lowercase hex)"; exit 1; }
+  python - "$DIST/index.html" "$BEACON_TOKEN" <<'PYBEACON'
+import pathlib, sys
+page, token = pathlib.Path(sys.argv[1]), sys.argv[2]
+html = page.read_text(encoding="utf-8")
+if "static.cloudflareinsights.com/beacon.min.js" in html:
+    print("analytics beacon: already present in dist/index.html (deploy re-run without a rebuild)")
+    sys.exit(0)
+tag = ('    <!-- Cloudflare Web Analytics: cookieless page-view beacon; injected by deploy-site.sh -->\n'
+       '    <script defer src="https://static.cloudflareinsights.com/beacon.min.js" '
+       f'data-cf-beacon=\'{{"token": "{token}"}}\'></script>\n')
+assert html.count("</head>") == 1, "dist/index.html must have exactly one </head>"
+page.write_text(html.replace("</head>", tag + "  </head>"), encoding="utf-8")
+print("analytics beacon: injected into dist/index.html")
+PYBEACON
+else
+  say "analytics beacon: CF_BEACON_TOKEN not set — no beacon on this deploy (access logs are unaffected)"
+fi
+
 say "── upload: no-cache entry points (last, so their metadata wins): index.html ${ENTRY_RELS[*]}"
 aws_mutate s3 cp "$DIST/index.html" "s3://$SITE_BUCKET/index.html" --region "$REGION" \
   --content-type "text/html" --cache-control "$NOCACHE_CC" --only-show-errors
@@ -635,6 +665,13 @@ FRAME_REL=$(python -c "import json,sys; m=json.load(open(sys.argv[1])); print(so
 
 verify_one "root (default root object)" "/" "text/html"
 verify_one "index.html" "/index.html" "text/html" "no-cache"
+if [[ -n "$BEACON_TOKEN" ]]; then
+  if curl -sS "https://$DOMAIN/index.html?v=$RANDOM" | grep -q "data-cf-beacon='{\"token\": \"$BEACON_TOKEN\"}'"; then
+    say "  PASS  analytics beacon present on the live page"
+  else
+    say "  FAIL  analytics beacon missing from the live page"; VERIFY_FAILURES=$((VERIFY_FAILURES + 1))
+  fi
+fi
 verify_one "manifest.json" "/data/web/manifest.json" "application/json" "no-cache"
 verify_one "webp frame ($FRAME_REL)" "/data/web/$FRAME_REL" "image/webp" "immutable"
 for rel in "${PAGE_RELS[@]}"; do

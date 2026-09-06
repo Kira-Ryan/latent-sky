@@ -189,3 +189,26 @@ def test_the_lookback_is_bounded(env):
     fake.objects["daily/2026-08-01/stores.tar.gz"] = b"x"
     import datetime as dt
     assert ll.pending_scoring(dt.date(2026, 9, 4)) is None, "reached back further than the bound"
+
+
+def test_the_claim_names_the_day_the_pod_will_score(env):
+    """The claim is what the deadman audits. On 4 Sep 2026 it said 'prev_date:
+    2026-09-03' (yesterday, from plan()) while the pod was sent to score 2 Sep,
+    and the audit raised a false alarm about 3 Sep."""
+    import json
+    fake, _ = env
+    fake.objects["daily/2026-09-02/stores.tar.gz"] = b"x"
+    fake.objects["daily/2026-09-02/launched.json"] = json.dumps(
+        {"init": "2026-09-02T12:00:00", "event_id": "daily-2026-09-02", "members": 1}).encode()
+    ll.handler({"date": "2026-09-04"}, None)
+    claim = json.loads(fake.objects["daily/2026-09-04/launched.json"])
+    assert claim["scores_prev"] is True
+    assert claim["prev_date"] == "2026-09-02" and claim["prev_event_id"] == "daily-2026-09-02"
+
+
+def test_the_claim_says_nothing_is_scored_when_nothing_is(env):
+    import json
+    fake, _ = env
+    ll.handler({"date": "2026-09-04"}, None)
+    claim = json.loads(fake.objects["daily/2026-09-04/launched.json"])
+    assert claim["scores_prev"] is False and claim["prev_date"] is None
