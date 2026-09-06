@@ -71,6 +71,10 @@
       <a href="mailto:KiraRyan27@gmail.com">KiraRyan27@gmail.com</a>
       <span class="sep" aria-hidden="true">·</span>
       <a href="https://www.linkedin.com/in/kira-ryan/" target="_blank" rel="noopener noreferrer">LinkedIn</a>
+      <span class="sep" aria-hidden="true">·</span>
+      <!-- The code is MIT and the whole pipeline is in the open; for the
+           audience this site is for, that is the strongest claim on the page. -->
+      <a href="https://github.com/Kira-Ryan/latent-sky" target="_blank" rel="noopener noreferrer">Open source on GitHub</a>
     </p>
   </address>
 </div>

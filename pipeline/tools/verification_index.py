@@ -95,7 +95,7 @@ PAGE = """<!doctype html>
   </div>
 
   <footer>
-    <span>Kira Ryan &middot; <a href="/">latent-sky.dev</a></span>
+    <span>Kira Ryan &middot; <a href="/">latent-sky.dev</a> &middot; <a href="https://github.com/Kira-Ryan/latent-sky">Open source on GitHub</a></span>
     <span id="count"></span>
   </footer>
 </div>
