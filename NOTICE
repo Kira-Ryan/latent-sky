@@ -1,6 +1,12 @@
 Latent Sky
 Copyright (c) 2026 Kira Ryan
 
+The MIT licence in LICENSE covers the Latent Sky source code only. Third-party
+models, data and colour maps carry their own licences, listed below; the
+per-asset audit with hashes and check dates is licences/MANIFEST.yaml.
+(This note lived at the foot of LICENSE until 6 Sep 2026; GitHub's licence
+detection needs the MIT text alone, so the file said "Other" on the repo page.)
+
 This project incorporates or derives from the following third-party work.
 Full per-asset audit with hashes and check dates: licences/MANIFEST.yaml.
 
