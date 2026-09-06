@@ -20,6 +20,7 @@ the central-US domain; the Gulf and Atlantic corners entirely -999):
 from __future__ import annotations
 
 import json
+import math
 import pathlib
 
 import numpy as np
@@ -166,31 +167,76 @@ def mrms_on_grid(npz_path: pathlib.Path, grid):
 
 # ------------------------------------------------------------------ the scoring
 
+HEADLINE_RULE = "mean-v2"          # stamped into every headline; DOCS/Verification-Protocol.md
+COVERAGE_FLOOR = 0.5               # an hour with less radar than this over the grid is not scored
+
+
+def _defined(v) -> bool:
+    return v is not None and not (isinstance(v, float) and math.isnan(v))
+
+
 def headline(results: dict, threshold: float = 40.0, spin_up_leads: int = 2) -> dict:
     """The one honest figure a viewer should see without opening the report.
 
-    The smallest neighbourhood at which this run reaches useful skill (Roberts &
-    Lean's 0.5 + f0/2) at `threshold`, and for how many of the scored hours. The
-    first `spin_up_leads` hours are excluded: a convection-allowing model handed
-    an analysis scores trivially well against it before it has done any work, and
-    counting those hours would flatter the run.
+    Rule "mean-v2" (DOCS/Verification-Protocol.md). Over the SCORABLE hours, the
+    useful scale is the smallest neighbourhood at which the MEAN FSS reaches the
+    mean useful line (Roberts & Lean 2008: 0.5 + f0/2, averaged over the same
+    hours). The number of hours individually above the line at that scale is
+    reported beside it, never instead of it.
 
-    `useful_scale_km` is None when the run never reaches useful skill at any
-    tested scale, which is a real and publishable answer — the field must be
-    rendered as "none at any scale", never quietly omitted.
+    Why an aggregate, not "any hour": the previous rule named the smallest
+    neighbourhood at which at least ONE hour cleared the line, so one chance
+    crossing at the coarsest window tested was headlined as "useful at 98 km"
+    (it happened on 4 and 5 Sep 2026). Why the mean, not the median: FSS is
+    conventionally averaged over cases in the literature, and a median would
+    hide the shape of the distribution the hour count already shows.
+
+    An hour is scorable when its FSS is defined (some 40 dBZ mass in forecast or
+    radar; a correct null forecast is undefined, not wrong) and radar covers at
+    least COVERAGE_FLOOR of the grid. The first `spin_up_leads` hours are never
+    scored: a convection-allowing model handed an analysis scores trivially well
+    against it before it has done any work.
+
+    status: "useful" (usefulScaleKm set), "below-line" (below at every scale up
+    to largestScaleKm, hour count still reported at the largest scale), or
+    "no-echo" (nothing scorable at all). All three are real, publishable
+    answers and must be rendered, never quietly omitted.
     """
-    leads = [r for r in results["leads"] if r["lead_h"] >= spin_up_leads]
     key = str(int(threshold))
     windows = results["windows_km"]
+    ncell = int(results["grid"]["size"][0]) * int(results["grid"]["size"][1])
+    post = [r for r in results["leads"] if r["lead_h"] >= spin_up_leads]
+    scorable = [
+        r for r in post
+        if r["valid_cells"] / ncell >= COVERAGE_FLOOR
+        and all(_defined(v) for v in r["fss"][key]["by_window"])
+    ]
+    base = {
+        "rule": HEADLINE_RULE,
+        "thresholdDbz": int(threshold),
+        "scoredHours": len(scorable),
+        "undefinedHours": len(post) - len(scorable),
+        "largestScaleKm": round(windows[-1], 1),
+    }
+    if not scorable:
+        return {**base, "status": "no-echo", "usefulScaleKm": None, "usefulHours": 0,
+                "meanFss": None, "usefulLine": None}
+
+    line = float(np.mean([r["fss"][key]["fss_useful"] for r in scorable]))
+
+    def at(i: int) -> tuple[float, int]:
+        vals = [r["fss"][key]["by_window"][i] for r in scorable]
+        hours = sum(1 for r in scorable if r["fss"][key]["by_window"][i] >= r["fss"][key]["fss_useful"])
+        return float(np.mean(vals)), hours
+
     for i, km in enumerate(windows):
-        hours = sum(1 for r in leads if r["fss"][key]["by_window"][i] >= r["fss"][key]["fss_useful"])
-        if hours:
-            return {"thresholdDbz": int(threshold), "usefulScaleKm": round(km, 1),
-                    "usefulHours": hours, "scoredHours": len(leads),
-                    "largestScaleKm": round(windows[-1], 1)}
-    return {"thresholdDbz": int(threshold), "usefulScaleKm": None,
-            "usefulHours": 0, "scoredHours": len(leads),
-            "largestScaleKm": round(windows[-1], 1)}
+        mean, hours = at(i)
+        if mean >= line:
+            return {**base, "status": "useful", "usefulScaleKm": round(km, 1), "usefulHours": hours,
+                    "meanFss": round(mean, 3), "usefulLine": round(line, 3)}
+    mean, hours = at(len(windows) - 1)
+    return {**base, "status": "below-line", "usefulScaleKm": None, "usefulHours": hours,
+            "meanFss": round(mean, 3), "usefulLine": round(line, 3)}
 
 
 def score(

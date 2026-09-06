@@ -52,6 +52,16 @@ export interface RunInfo {
     usefulHours: number;
     scoredHours: number;
     largestScaleKm: number;
+    /**
+     * Rule "mean-v2" (DOCS/Verification-Protocol.md) adds these. Absent on
+     * results scored under the first rule, which named any single hour above
+     * the line; the copy then says less rather than inventing an aggregate.
+     */
+    status?: "useful" | "below-line" | "no-echo";
+    undefinedHours?: number;
+    meanFss?: number | null;
+    usefulLine?: number | null;
+    rule?: string;
   };
 }
 
@@ -187,7 +197,15 @@ function parseVerificationSummary(raw: unknown): RunInfo["verificationSummary"] 
   ) {
     return undefined;
   }
-  return { thresholdDbz, usefulScaleKm, usefulHours, scoredHours, largestScaleKm };
+  const out: NonNullable<RunInfo["verificationSummary"]> = {
+    thresholdDbz, usefulScaleKm, usefulHours, scoredHours, largestScaleKm,
+  };
+  if (s.status === "useful" || s.status === "below-line" || s.status === "no-echo") out.status = s.status;
+  if (num(s.undefinedHours) !== undefined) out.undefinedHours = num(s.undefinedHours);
+  if (s.meanFss === null || num(s.meanFss) !== undefined) out.meanFss = s.meanFss === null ? null : num(s.meanFss);
+  if (s.usefulLine === null || num(s.usefulLine) !== undefined) out.usefulLine = s.usefulLine === null ? null : num(s.usefulLine);
+  if (typeof s.rule === "string") out.rule = s.rule;
+  return out;
 }
 
 export function parseManifest(raw: unknown, baseUrl: URL): Manifest {

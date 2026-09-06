@@ -63,7 +63,8 @@
   <h1>Every run, scored against what happened</h1>
   <p class="dek">Each forecast here was published before the weather it describes, then measured
   against observed radar afterwards with the Fractions Skill Score and republished with the
-  observations beside it. The results are what they are.</p>
+  observations beside it. The results are what they are; the rules that produce them are
+  stated, versioned and dated in <a href="/verification/protocol.html">the verification protocol</a>.</p>
 
   <div class="tablewrap" id="table">
     <p class="empty">Loading the record&hellip;</p>
@@ -81,10 +82,22 @@
 const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const summarise = (h) => {
   if (!h) return '<span class="none">not summarised</span>';
-  if (h.usefulScaleKm === null || h.usefulScaleKm === undefined) {
-    return `No useful skill at ${h.thresholdDbz} dBZ at any scale to ${Math.round(h.largestScaleKm)} km`;
+  const largest = Math.round(h.largestScaleKm);
+  // Rule "mean-v2": the aggregate is the claim; the hour count is the detail.
+  if (h.status === "no-echo") return `No echo at ${h.thresholdDbz} dBZ; nothing to score`;
+  if (h.status === "below-line") {
+    const fig = h.meanFss != null && h.usefulLine != null ? ` (mean FSS ${h.meanFss.toFixed(2)} vs ${h.usefulLine.toFixed(2)} at ${largest} km)` : "";
+    return `Below the useful line at every scale to ${largest} km${fig}; ${h.usefulHours} of ${h.scoredHours} h above it at ${largest} km`;
   }
-  return `Useful at ${Math.round(h.usefulScaleKm)} km, ${h.usefulHours} of ${h.scoredHours} h &middot; ${h.thresholdDbz} dBZ`;
+  if (h.status === "useful" && h.usefulScaleKm != null) {
+    const km = Math.round(h.usefulScaleKm);
+    return `Useful from ${km} km${km === largest ? " (the coarsest scale tested)" : ""}, ${h.usefulHours} of ${h.scoredHours} h &middot; ${h.thresholdDbz} dBZ`;
+  }
+  // First-rule results (any single hour above the line): say only that.
+  if (h.usefulScaleKm === null || h.usefulScaleKm === undefined) {
+    return `No hour above the useful line at ${h.thresholdDbz} dBZ to ${largest} km`;
+  }
+  return `${h.usefulHours} of ${h.scoredHours} h above the line at ${Math.round(h.usefulScaleKm)} km &middot; first rule`;
 };
 fetch("/verification/index.json", { cache: "no-store" })
   .then((r) => { if (!r.ok) throw new Error(`${r.status} ${r.statusText}`); return r.json(); })

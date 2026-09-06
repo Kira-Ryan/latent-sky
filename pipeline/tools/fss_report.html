@@ -190,6 +190,7 @@
     <dt>Grid</dt><dd>Both fields on the same <span id="m-grid">884&times;661</span> equirectangular grid the site renders, <span id="m-px">2.39</span> km per pixel, rebuilt with the encoder's own rule. Forecast regridded nearest-neighbour from its 512&times;640 curvilinear grid; MRMS from 0.01&deg; by nearest cell.</dd>
     <dt>Masking</dt><dd>MRMS <code>-999</code> (outside radar coverage) excluded; <code>-99</code> (coverage, no echo) counted as 0 dBZ. Forecast pixels outside the curvilinear footprint excluded. The sentinel meaning was established empirically: zero <code>-999</code> cells inside the domain, and the Gulf and Atlantic corners entirely <code>-999</code>.</dd>
     <dt>FSS</dt><dd>Roberts and Lean 2008. Binary exceedance at 20, 30 and 40 dBZ; square neighbourhoods of 1, 5, 11, 21 and 41 pixels (2, 12, 26, 50 and 98 km); FSS = 1 &minus; MSE(P<sub>f</sub>, P<sub>o</sub>) / (mean P<sub>f</sub><sup>2</sup> + mean P<sub>o</sub><sup>2</sup>) over valid cells. Cells outside the mask are zero in both fields before filtering, so the mask edge neither creates nor absorbs neighbourhood mass. Self-tested: FSS(f, f) = 1, FSS(f, 0) = 0, non-decreasing with scale.</dd>
+    <dt>Headline</dt><dd>Rule <code>mean-v2</code>: over the scorable post-spin-up hours (FSS defined, radar over at least half the grid), the useful scale is the smallest neighbourhood at which the <em>mean</em> FSS reaches the mean useful line; the count of hours individually above the line is reported beside it. The full rules, and their history, are stated in <a href="/verification/protocol.html">the verification protocol</a>.</dd>
     <dt>Caveats</dt><dd><span id="m-cav">One diffusion sample, not an ensemble.</span> MRMS is radar-derived and quality-controlled, not absolute truth. Nearest-cell resampling of 1 km radar to 2.4 km keeps peaks but drops some texture. Zero-padding at the domain edge slightly deflates the largest neighbourhoods near the boundary.</dd>
   </dl></div>
 
@@ -244,15 +245,31 @@ const obsOn = firstLead(r => r.coverage["40"].observed >= 0.001);
 const fcOn  = firstLead(r => r.coverage["40"].forecast >= 0.001);
 const dtInit = (obsOn && fcOn) ? Math.abs(obsOn.lead_h - fcOn.lead_h) : null;
 const post = L.filter(r => r.lead_h >= 2);
-function usefulAt(thr) {  // smallest neighbourhood that clears the useful line, and for how many hours
+// Rule mean-v2 (see /verification/protocol.html), the same rule verify.headline()
+// applies, so this page and the globe agree by construction. An hour is scorable
+// when its FSS is defined and radar covers at least half the grid; the claim is
+// the MEAN FSS over scorable hours against the mean useful line; the hour count
+// is reported beside it, never instead of it.
+const NCELL = R.grid.size[0] * R.grid.size[1];
+const defined = (v) => v != null && !Number.isNaN(v);
+const scorable = (thr) => post.filter(r => r.valid_cells / NCELL >= 0.5 && r.fss[thr].by_window.every(defined));
+function usefulAt(thr) {
+  const rows = scorable(thr);
+  if (!rows.length) return { km: null, w: KM.length - 1, rows, hours: 0, mean: null, line: null, noEcho: true };
+  const line = rows.reduce((s, r) => s + r.fss[thr].fss_useful, 0) / rows.length;
+  const at = (w) => ({
+    mean: rows.reduce((s, r) => s + r.fss[thr].by_window[w], 0) / rows.length,
+    hours: rows.filter(r => r.fss[thr].by_window[w] >= r.fss[thr].fss_useful).length,
+  });
   for (let w = 0; w < KM.length; w++) {
-    const hrs = post.filter(r => r.fss[thr].by_window[w] >= r.fss[thr].fss_useful).length;
-    if (hrs > 0) return { km: KM[w], hours: hrs, w };
+    const a = at(w);
+    if (a.mean >= line) return { km: KM[w], w, rows, line, ...a };
   }
-  return null;
+  return { km: null, w: KM.length - 1, rows, line, ...at(KM.length - 1) };
 }
 const u40 = usefulAt("40"), u20 = usefulAt("20");
-const usefulScale = u40 ? u40.km : null, usefulHours = u40 ? u40.hours : 0;
+const usefulScale = u40.km, usefulHours = u40.hours;
+const LARGEST = Math.round(KM[KM.length - 1]);
 const hours50 = post.filter(r => r.fss["40"].by_window[3] >= r.fss["40"].fss_useful).length;
 const late = L.filter(r => r.lead_h >= 5);
 const dInt = late.reduce((s, r) => s + (r.max_dbz.forecast - r.max_dbz.observed), 0) / late.length;
@@ -270,11 +287,13 @@ document.getElementById("tiles").innerHTML = [
    dtInit == null
      ? "Neither field reached 0.1% of the domain at 40 dBZ in this window, so there is no initiation to time."
      : "Both fields first exceed 0.1% of the domain at 40 dBZ at " + utc(obsOn) + " (observed) and " + utc(fcOn) + " (forecast)." + (DIXIE ? " First SPC tornado report: 22Z." : "")],
-  ["Useful placement at 40 dBZ", usefulScale == null ? "never" : "≈" + Math.round(usefulScale) + " km",
-   (usefulScale == null
-     ? "FSS never clears the useful line at any neighbourhood up to " + Math.round(KM[KM.length - 1]) + " km"
-     : "The smallest neighbourhood at which FSS clears the useful line, for " + usefulHours + " of the " + post.length + " post-spin-up hours")
-   + (hours50 > 0 ? `. At 50 km, ${hours50} h.` : ". At 50 km and below, never.")],
+  ["Useful placement at 40 dBZ", u40.noEcho ? "no echo" : usefulScale == null ? "below line" : "≈" + Math.round(usefulScale) + " km",
+   u40.noEcho
+     ? "No post-spin-up hour had 40 dBZ mass in forecast or radar with adequate radar coverage; nothing to score."
+     : (usefulScale == null
+       ? `Mean FSS ${fmt(u40.mean, 2)} at ${LARGEST} km against a useful line of ${fmt(u40.line, 2)}, over ${u40.rows.length} scorable hours; ${u40.hours} of them above the line at ${LARGEST} km`
+       : `The smallest neighbourhood at which the mean FSS (${fmt(u40.mean, 2)}) reaches the useful line (${fmt(u40.line, 2)}); ${u40.hours} of ${u40.rows.length} hours above it`)
+     + (hours50 > 0 ? `. At 50 km, ${hours50} h above the line.` : ". At 50 km and below, no hour above the line.")],
   ["Core intensity", (dInt >= 0 ? "+" : "") + fmt(dInt, 1) + " dBZ",
    "Mean forecast maximum minus observed maximum, +5 h onward. " + (dInt > 2 ? "The strongest forecast cores are hotter than the radar sees." : dInt < -2 ? "The forecast's strongest cores are weaker than the radar's." : "Peak intensity is about right.")],
   ["Storm-mass offset", medSep == null ? "n/a" : Math.round(medSep) + " km",
@@ -285,7 +304,7 @@ document.getElementById("tiles").innerHTML = [
 
 const readingDixie = `
 <p><strong>The timing is right.</strong> Started with essentially no echo on the analysis, the model produced its first strong cores in the same hour the radar did, and the first tornado report followed an hour later. That is the thing a convection-allowing forecast is for, and this run did it from a clean start.</p>
-<p><strong>The placement is mesoscale, not storm-scale.</strong> At the 40 dBZ threshold the forecast only reaches useful skill once the neighbourhood is about 100 km wide, and only through the mature phase, roughly 03Z to 07Z. At 50 km it approaches the line and never crosses it; at 2 km it is close to zero all night, which is expected and is precisely why gridpoint verification of a 3 km field is the wrong tool. At 20 dBZ, where the question is whether there is precipitation here at all, useful skill appears at 50 km from 22Z through 08Z.</p>
+<p><strong>The placement is mesoscale, not storm-scale.</strong> At the 40 dBZ threshold the mean FSS stays below the useful line at every neighbourhood tested, including ${LARGEST} km, where it reaches ${fmt(u40.mean, 2)} against a line of ${fmt(u40.line, 2)}; ${u40.hours} of the ${u40.rows.length} scorable hours clear the line there, all in the mature phase, roughly 03Z to 07Z. At 50 km it approaches the line in the best hours and never crosses it; at 2 km it is close to zero all night, which is expected and is precisely why gridpoint verification of a 3 km field is the wrong tool. At 20 dBZ, where the question is whether there is precipitation here at all, ${u20.km ? `the mean reaches the line from ${Math.round(u20.km)} km, with ${u20.hours} of ${u20.rows.length} hours above it` : `the mean does not reach the line at any scale either, though ${u20.hours} of ${u20.rows.length} hours clear it at ${LARGEST} km`}.</p>
 <p><strong>The intensity is too high and the footprint too small.</strong> Two biases run in opposite directions. Above 40 dBZ the model produces ${fmt(ratio40, 1)}&times; the observed coverage from 05Z onward, and its peak values run about ${fmt(dInt, 0)} dBZ above the radar. Above 20 dBZ it produces only ${fmt(ratio20, 2)}&times; the observed coverage through the active phase. Too many hot cores and too little of the broad, moderate echo around them: the too-cellular signature that convection-allowing models, physics-based or learned, are known for.</p>
 <p><strong>The storm mass is displaced by about ${Math.round(medSep)} km.</strong> The right region, not the right county. The 06Z and 07Z hours come within ${Math.round(Math.min(...active))} km; 03Z and 05Z drift past 160.</p>`;
 
@@ -294,10 +313,12 @@ const readingGeneric = `
 <p><strong>Timing.</strong> ${dtInit == null
   ? "Neither the radar nor the forecast reached 0.1% of the domain at 40 dBZ in this window: a quiet day for strong convection, and nothing to time."
   : `The radar first showed strong cores (0.1% of the domain at 40 dBZ) at ${utc(obsOn)}; the forecast at ${utc(fcOn)}, ${dtInit === 0 ? "the same hour" : `${dtInit} h ${fcOn.lead_h < obsOn.lead_h ? "early" : "late"}`}.`}</p>
-<p><strong>Placement.</strong> ${u40
-  ? `At 40 dBZ the forecast clears the useful line only once the neighbourhood is about ${Math.round(u40.km)} km wide, and then for ${u40.hours} of ${post.length} hours${hours50 > 0 ? `; at 50 km for ${hours50}` : "; at 50 km never"}.`
-  : `At 40 dBZ the forecast never clears the useful line at any neighbourhood up to ${Math.round(KM[KM.length - 1])} km.`}
-  ${u20 ? `At 20 dBZ, where the question is whether there is precipitation here at all, useful skill appears at ${Math.round(u20.km)} km for ${u20.hours} hours.` : "At 20 dBZ it does not reach useful skill either."}
+<p><strong>Placement.</strong> ${u40.noEcho
+  ? `At 40 dBZ there was nothing to score: no post-spin-up hour had 40 dBZ mass in forecast or radar with adequate coverage.`
+  : u40.km
+    ? `At 40 dBZ the mean FSS reaches the useful line once the neighbourhood is about ${Math.round(u40.km)} km wide (${fmt(u40.mean, 2)} against ${fmt(u40.line, 2)}), with ${u40.hours} of ${u40.rows.length} scorable hours above the line there${hours50 > 0 ? `; at 50 km, ${hours50} hours` : "; at 50 km, none"}.`
+    : `At 40 dBZ the mean FSS stays below the useful line at every neighbourhood up to ${LARGEST} km: ${fmt(u40.mean, 2)} against ${fmt(u40.line, 2)} at ${LARGEST} km, over ${u40.rows.length} scorable hours, ${u40.hours === 0 ? "none of them" : `${u40.hours} of them`} above the line there${hours50 > 0 ? `; at 50 km, ${hours50}` : ""}.`}
+  ${u20.noEcho ? "" : u20.km ? `At 20 dBZ, where the question is whether there is precipitation here at all, the mean reaches the line from ${Math.round(u20.km)} km, ${u20.hours} of ${u20.rows.length} hours above it.` : `At 20 dBZ the mean does not reach the line at any scale either (${fmt(u20.mean, 2)} against ${fmt(u20.line, 2)} at ${LARGEST} km).`}
   At 2 km the score is near zero whatever the day, which is expected and is why gridpoint verification of a 3 km field is the wrong tool.</p>
 <p><strong>Intensity and footprint.</strong> ${ratio40 == null
   ? "The radar had no 40 dBZ coverage from +11 h on, so there is no coverage ratio to report at that threshold."

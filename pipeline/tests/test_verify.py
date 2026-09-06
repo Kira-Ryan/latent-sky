@@ -79,13 +79,17 @@ def test_to_180():
     assert list(verify.to_180(np.array([250.37, 274.58, 116.0]))) == pytest.approx([-109.63, -85.42, 116.0])
 
 
-def _results(by_window, useful=0.5, windows=(2.4, 12.0, 26.3, 50.3, 98.2), leads=None):
-    """A results dict shaped like score()'s, with FSS values we choose."""
+def _results(by_window, useful=0.5, windows=(2.4, 12.0, 26.3, 50.3, 98.2), leads=None, valid_cells=None):
+    """A results dict shaped like score()'s, with FSS values we choose. The grid
+    is 10x10, so valid_cells=100 is full radar coverage."""
     n = leads if leads is not None else len(by_window)
+    cells = valid_cells if valid_cells is not None else [100] * n
     return {
+        "grid": {"size": [10, 10]},
         "windows_km": list(windows),
         "leads": [
-            {"lead_h": h, "fss": {"40": {"by_window": list(by_window[h]), "fss_useful": useful}}}
+            {"lead_h": h, "valid_cells": cells[h],
+             "fss": {"40": {"by_window": list(by_window[h]), "fss_useful": useful}}}
             for h in range(n)
         ],
     }
@@ -119,3 +123,55 @@ def test_headline_says_none_rather_than_omitting_it():
 def test_headline_prefers_the_smallest_scale_that_works():
     rows = [[0.1, 0.9, 0.9, 0.9, 0.9]] * 5
     assert verify.headline(_results(rows))["usefulScaleKm"] == 12.0
+
+
+# ── rule mean-v2 (DOCS/Verification-Protocol.md) ──────────────────────────────
+
+def test_one_chance_hour_at_the_coarsest_scale_is_not_useful():
+    """The 4 and 5 Sep 2026 case: one post-spin-up hour clears the line at 98 km
+    and every other hour is far below. The first rule headlined that as
+    'useful at 98 km'. The aggregate says below the line, and reports the hour."""
+    rows = [[0.0] * 5] * 2 + [[0.05, 0.1, 0.15, 0.2, 0.72]] + [[0.02, 0.04, 0.07, 0.12, 0.2]] * 16
+    h = verify.headline(_results(rows))
+    assert h["status"] == "below-line" and h["usefulScaleKm"] is None
+    assert h["usefulHours"] == 1 and h["scoredHours"] == 17
+    assert h["meanFss"] < h["usefulLine"]
+    assert h["rule"] == verify.HEADLINE_RULE
+
+
+def test_the_mean_over_hours_is_the_claim():
+    """Most hours clearly above the line at 50 km: useful from 50 km, and the
+    hours below it are still counted honestly."""
+    rows = [[0.0] * 5] * 2 + [[0.1, 0.2, 0.3, 0.7, 0.9]] * 8 + [[0.1, 0.2, 0.3, 0.3, 0.6]] * 2
+    h = verify.headline(_results(rows))
+    assert h["status"] == "useful" and h["usefulScaleKm"] == 50.3
+    assert h["usefulHours"] == 8 and h["scoredHours"] == 10
+    assert h["meanFss"] == pytest.approx(0.62, abs=0.001) and h["usefulLine"] == 0.5
+
+
+def test_a_quiet_day_is_nothing_to_score_not_no_skill():
+    """No 40 dBZ mass in either field: FSS is undefined, and a correct null
+    forecast must not be published as 'no useful skill'."""
+    nan = float("nan")
+    rows = [[nan] * 5] * 5
+    h = verify.headline(_results(rows))
+    assert h["status"] == "no-echo" and h["usefulScaleKm"] is None
+    assert h["scoredHours"] == 0 and h["undefinedHours"] == 3
+    assert h["meanFss"] is None and h["usefulLine"] is None
+
+
+def test_hours_without_radar_coverage_are_not_scored():
+    """An hour where radar covers two cells of the grid scored on those two
+    cells and counted as a full useful hour. Below the coverage floor it is
+    excluded and counted as undefined."""
+    rows = [[0.0] * 5] * 2 + [[0.9] * 5] * 3
+    h = verify.headline(_results(rows, valid_cells=[100, 100, 100, 2, 100]))
+    assert h["scoredHours"] == 2 and h["undefinedHours"] == 1
+    assert h["status"] == "useful" and h["usefulHours"] == 2
+
+
+def test_the_hour_count_is_reported_at_the_useful_scale():
+    rows = [[0.0] * 5] * 2 + [[0.1, 0.6, 0.9, 0.9, 0.9]] * 3 + [[0.1, 0.4, 0.9, 0.9, 0.9]] * 1
+    h = verify.headline(_results(rows))
+    # mean at 12 km = (0.6*3 + 0.4)/4 = 0.55 >= 0.5 -> useful from 12 km, 3 of 4 hours above the line there
+    assert h["usefulScaleKm"] == 12.0 and h["usefulHours"] == 3 and h["scoredHours"] == 4

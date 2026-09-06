@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verification protocol &middot; Latent Sky</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f2f4f7; --panel: #ffffff;
+    --ink: #121a2c; --ink-2: #4a566e; --ink-3: #7b869a;
+    --line: #d5dbe5; --grid: #e6eaf0; --accent: #0e8386;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0d1420; --panel: #141d2c;
+      --ink: #e9eef6; --ink-2: #b1bccd; --ink-3: #7f8ba0;
+      --line: #253349; --grid: #1d2a3d; --accent: #45c5c7;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0d1420; --panel: #141d2c;
+    --ink: #e9eef6; --ink-2: #b1bccd; --ink-3: #7f8ba0;
+    --line: #253349; --grid: #1d2a3d; --accent: #45c5c7;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; font-size: 15.5px; line-height: 1.6; }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 40px 24px 64px; }
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+  a:hover, a:focus-visible { border-bottom-color: var(--accent); outline: none; }
+  .topnav { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin: 0 0 18px; padding-bottom: 12px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .topnav a { border-bottom: none; }
+  .topnav .home { font-family: "Barlow Condensed", "Arial Narrow", sans-serif; font-weight: 600; font-size: 17px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink); }
+  .topnav .home:hover { color: var(--accent); }
+  .topnav .sep { color: var(--ink-3); }
+  .topnav .index, .topnav .globe { color: var(--accent); border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+  .topnav .globe { margin-left: auto; }
+  .eyebrow { font-family: "Barlow Condensed", sans-serif; font-weight: 600; font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+  h1 { font-family: "Barlow Condensed", "Arial Narrow", sans-serif; font-weight: 600; font-size: 42px; line-height: 1.05; margin: 6px 0 14px; text-wrap: balance; }
+  h2 { font-family: "Barlow Condensed", sans-serif; font-weight: 600; font-size: 24px; letter-spacing: 0.01em; margin: 36px 0 6px; }
+  p, li { max-width: 68ch; }
+  p { margin: 0 0 14px; }
+  ul { padding-left: 22px; margin: 0 0 14px; }
+  li { margin: 0 0 6px; }
+  code { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.92em; color: var(--ink); }
+  strong { font-weight: 600; }
+  footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-3); display: flex; flex-wrap: wrap; gap: 6px 24px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="topnav">
+    <a class="home" href="/">Latent Sky</a>
+    <span class="sep" aria-hidden="true">&middot;</span>
+    <a class="index" href="/verification/index.html">All verifications</a>
+    <a class="globe" href="/">Back to the globe</a>
+  </nav>
+  <div class="eyebrow">Latent Sky</div>
+<h1>Verification protocol</h1>
+<p>Version 2, in force from 7 September 2026. Version 1 ran from 4 to 6 September 2026 and is described at the end. Every scored run states which version produced its figures, in the <code>rule</code> field of its results file and its manifest.</p>
+<p>This page states the rules by which Latent Sky scores its own forecasts against radar. It is written before the results, not after them: the daily run is scored and listed whatever the outcome, and a change to these rules is a new version applied from a stated date, never a quiet edit.</p>
+<h2>What is scored</h2>
+<p>The StormCast composite reflectivity forecast over the central United States, initialised at 12 UTC from the HRRR analysis and conditioned on the 12 UTC GFS forecast, 3 km native grid, hourly to 18 hours. The verification field is NOAA&rsquo;s MRMS composite reflectivity, the merged radar mosaic, at the same instants.</p>
+<p>Both fields are placed on the display grid, the grid the site renders, so that what is scored is what is shown: 884 by 661 cells over the domain rectangle, 2.39 km per cell. The forecast is sampled from its native grid by nearest cell; MRMS is resampled from its 0.01 degree grid the same way.</p>
+<h2>Matching in time</h2>
+<p>Each forecast hour is matched to the MRMS file nearest to its valid time. A match is refused if the nearest file is more than 300 seconds away, and the worst offset used is recorded in the results. A run whose forecast times do not equal the observation times is not scored.</p>
+<h2>The score</h2>
+<p>The Fractions Skill Score of Roberts and Lean (2008). At each threshold, both fields become binary exceedance masks. Each mask is replaced by the fraction of exceeding cells in a square neighbourhood around every cell. The score is one minus the mean squared difference of the two fraction fields, divided by the mean of the squared fractions of each. It is one for a perfect forecast, zero for one that places nothing where anything was, and rises with neighbourhood size because displacement is forgiven at scale.</p>
+<p>Thresholds: 20, 30 and 40 dBZ. The headline is at 40 dBZ, the threshold at which reflectivity means a strong storm rather than rain.</p>
+<p>Neighbourhoods: 1, 5, 11, 21 and 41 cells, which is 2.4, 12, 26, 50 and 98 km on the display grid. 98 km is the largest scale tested, and every statement of &ldquo;no useful skill&rdquo; says so.</p>
+<p>Radar coverage: cells with no radar coverage are masked out of both fields before the fractions are computed. Cells outside the mask are zero in both fields before filtering, so the edge of the mask neither creates nor absorbs neighbourhood mass.</p>
+<h2>The useful line</h2>
+<p>Roberts and Lean&rsquo;s criterion: a forecast is useful at a scale when its FSS exceeds 0.5 plus half the observed base rate, the fraction of covered cells that exceed the threshold. The base rate is computed per hour from the radar, so the line moves with how much weather there was.</p>
+<h2>Which hours count</h2>
+<p>The first two forecast hours are never scored. A convection-allowing model handed an analysis scores trivially well against it before it has done any work, and counting those hours would flatter the run.</p>
+<p>Of the remaining hours, an hour is scorable when both of these hold:</p>
+<ul>
+<li>its FSS is defined, meaning some cell exceeded the threshold in the forecast or the radar. A correct forecast of no strong storms is undefined, not wrong, and is never published as a failure;</li>
+<li>radar covers at least half of the grid cells in that hour.</li>
+</ul>
+<p>Hours that fail either test are reported as undefined and excluded from every aggregate.</p>
+<h2>The headline</h2>
+<p>The one figure the globe states without the reader opening the report.</p>
+<p>Over the scorable hours, the useful scale is the smallest neighbourhood at which the mean FSS reaches the mean useful line, both means taken over the same hours. The number of hours individually above the line at that scale is reported beside it, never instead of it.</p>
+<p>Three verdicts are possible, and all three are published:</p>
+<ul>
+<li><strong>useful</strong>: the mean reaches the line at some tested scale. The site says at which scale, and says so if that scale is the largest tested.</li>
+<li><strong>below-line</strong>: the mean reaches the line at no tested scale. The site says so, with the mean and the line at the largest scale and the count of hours above it there.</li>
+<li><strong>no-echo</strong>: no hour was scorable. The site says there was nothing to score.</li>
+</ul>
+<p>Why the mean and not any single hour: version 1 named the smallest neighbourhood at which at least one hour cleared the line, so a single chance crossing at the coarsest scale was headlined as useful skill. That happened on 4 and 5 September 2026. Why the mean and not the median: FSS is conventionally averaged over cases, and the hour count already shows the shape of the distribution.</p>
+<h2>Ensembles</h2>
+<p>When a run has ensemble members, differing only in the diffusion sampler&rsquo;s seed, the probability of exceedance across members is scored with the probabilistic FSS on the same grid, thresholds and neighbourhoods, and the single deterministic run is scored alongside for contrast. Member agreement is sampler spread with the initial condition held fixed. It is not a calibrated probability and it cannot see an error the members share; no reliability claim is made until reliability has been measured.</p>
+<h2>What is not claimed</h2>
+<p>No comparison against another forecast system is made yet, so a score says how the forecast placed strong storms, not whether it placed them better than the operational model would have. Radar persistence and the same-cycle HRRR forecast are the intended comparators and will appear here, under a new version, when they are scored.</p>
+<p>The daily run is initialised at 12 UTC and reaches the site around 16:15 UTC. Forecast hours two to four have therefore already happened by the time the run is public. They are scored like any other hour; a reader weighing the forecast as a prediction should discount them.</p>
+<h2>Timing and publication</h2>
+<p>The run for a day is scored the next day, once the radar for its whole window exists, and republished with the observed reflectivity beside the forecast and a link to its report. An unscored run says &ldquo;not yet scored&rdquo; until it is scored. If scoring fails, the run stays unscored and the failure is reported to the operator; a run is never dropped from the record because it scored badly.</p>
+<h2>Version history</h2>
+<ul>
+<li><strong>Version 2, from 7 September 2026.</strong> The headline is the mean FSS over scorable hours against the mean useful line. Hours with undefined FSS or radar coverage under half the grid are excluded and reported. Results already published under version 1 were rescored under version 2 on 6 September 2026; their reports and manifests carry the version 2 figures and this note.</li>
+<li><strong>Version 1, 4 to 6 September 2026.</strong> The headline was the smallest neighbourhood at which at least one post-spin-up hour cleared the useful line, with the count of such hours. It counted undefined hours as scored and had no coverage floor.</li>
+</ul>
+  <footer>
+    <span>Kira Ryan &middot; <a href="/">latent-sky.dev</a> &middot; <a href="https://github.com/Kira-Ryan/latent-sky">Open source on GitHub</a></span>
+    <span>Source: <a href="https://github.com/Kira-Ryan/latent-sky/blob/main/DOCS/Verification-Protocol.md">DOCS/Verification-Protocol.md</a></span>
+  </footer>
+</div>
+</body>
+</html>

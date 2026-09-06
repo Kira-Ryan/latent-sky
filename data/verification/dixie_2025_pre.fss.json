@@ -5717,11 +5717,16 @@
   }
  ],
  "headline": {
+  "rule": "mean-v2",
   "thresholdDbz": 40,
-  "usefulScaleKm": 98.2,
-  "usefulHours": 7,
   "scoredHours": 17,
-  "largestScaleKm": 98.2
+  "undefinedHours": 0,
+  "largestScaleKm": 98.2,
+  "status": "below-line",
+  "usefulScaleKm": null,
+  "usefulHours": 7,
+  "meanFss": 0.433,
+  "usefulLine": 0.503
  },
  "member_seeds": [
   20250314,

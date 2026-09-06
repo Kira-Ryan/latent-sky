@@ -20,11 +20,34 @@
   const measured = $derived.by(() => {
     const s = sky.manifest?.run.verificationSummary;
     if (!s) return "";
+    const dbz = `${s.thresholdDbz} dBZ`;
+    const largest = `${Math.round(s.largestScaleKm)} km`;
     const hours = `${s.usefulHours} of ${s.scoredHours} hours`;
-    if (s.usefulScaleKm === null) {
-      return `No useful skill at ${s.thresholdDbz} dBZ at any scale up to ${Math.round(s.largestScaleKm)} km.`;
+    // Rule "mean-v2": the aggregate is the claim, the hour count is the detail.
+    // The words "useful skill" appear only when the MEAN reaches the line.
+    if (s.status === "no-echo") {
+      return `No echo at or above ${dbz} in forecast or radar; nothing to score.`;
     }
-    return `Useful skill at ${s.thresholdDbz} dBZ only at ${Math.round(s.usefulScaleKm)} km neighbourhoods, ${hours}.`;
+    if (s.status === "below-line") {
+      const detail = s.usefulHours > 0 ? `${hours} above the line at ${largest}` : `no hour above the line`;
+      const figure = s.meanFss != null && s.usefulLine != null
+        ? ` (mean FSS ${s.meanFss.toFixed(2)} at ${largest} against a line of ${s.usefulLine.toFixed(2)})`
+        : "";
+      return `Below the useful line at ${dbz} at every scale up to ${largest}${figure}, ${detail}.`;
+    }
+    if (s.status === "useful" && s.usefulScaleKm !== null) {
+      const km = Math.round(s.usefulScaleKm);
+      const where = km === Math.round(s.largestScaleKm)
+        ? `only at the coarsest scale tested, ${largest}`
+        : `from ${km} km neighbourhoods`;
+      return `Useful skill at ${dbz} ${where}, ${hours} above the line.`;
+    }
+    // Results scored under the first rule (any single hour above the line):
+    // say exactly what that rule measured, and no more.
+    if (s.usefulScaleKm === null) {
+      return `No hour above the useful line at ${dbz} at any scale up to ${largest}.`;
+    }
+    return `Above the useful line at ${dbz} in ${hours} at ${Math.round(s.usefulScaleKm)} km neighbourhoods, under the first scoring rule.`;
   });
 </script>
 

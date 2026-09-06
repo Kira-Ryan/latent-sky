@@ -50,7 +50,9 @@ const CASES = [
       // The measured figure must be stated inline, and it must lead with the
       // limitation: a visitor who never opens the report should still learn that
       // the skill is mesoscale, not storm-scale.
-      verification: /^Scored against MRMS radar\.\s*Useful skill at 40 dBZ only at 98 km neighbourhoods, 7 of 17 hours\.\s*Read the verification\.$/,
+      // Rule mean-v2: the aggregate is the claim and, for this run, it is below
+      // the line at every scale; the hours above it are the detail.
+      verification: /^Scored against MRMS radar\.\s*Below the useful line at 40 dBZ at every scale up to 98 km \(mean FSS 0\.\d\d at 98 km against a line of 0\.\d\d\), \d+ of 17 hours above the line at 98 km\.\s*Read the verification\.$/,
       lead: /· \+10 h$/,
       frameZero: /· analysis$/,
       noReportLink: false,

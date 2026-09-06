@@ -4,45 +4,174 @@
   "title": "Latent Sky data manifest",
   "description": "THE contract between pipeline/ (producer) and web/ (consumer). The web app renders only what this file declares; the pipeline emits this file last, after every referenced asset exists and every identity checksum has been verified.",
   "type": "object",
-  "required": ["schemaVersion", "run", "frames", "layers"],
+  "required": [
+    "schemaVersion",
+    "run",
+    "frames",
+    "layers"
+  ],
   "additionalProperties": false,
   "properties": {
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": {
+      "const": 1
+    },
     "run": {
       "type": "object",
-      "required": ["id", "kind", "model", "generatedNote"],
+      "required": [
+        "id",
+        "kind",
+        "model",
+        "generatedNote"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": { "type": "string", "description": "e.g. gaemi-2024-07-24T00Z, or dev-cwb-sample" },
-        "kind": { "enum": ["forecast", "dev-sample"] },
-        "init": { "type": "string", "format": "date-time", "description": "Forecast initialisation time. Absent for dev-sample, whose frames are independent analysis times." },
+        "id": {
+          "type": "string",
+          "description": "e.g. gaemi-2024-07-24T00Z, or dev-cwb-sample"
+        },
+        "kind": {
+          "enum": [
+            "forecast",
+            "dev-sample"
+          ]
+        },
+        "init": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Forecast initialisation time. Absent for dev-sample, whose frames are independent analysis times."
+        },
         "model": {
           "type": "object",
-          "required": ["prognostic", "downscaling"],
+          "required": [
+            "prognostic",
+            "downscaling"
+          ],
           "properties": {
-            "prognostic": { "type": "string" },
-            "downscaling": { "type": "string" }
+            "prognostic": {
+              "type": "string"
+            },
+            "downscaling": {
+              "type": "string"
+            }
           }
         },
-        "generatedNote": { "type": "string", "description": "The scientific-honesty caption shown in the UI. Required — a build without it fails." },
-        "stormName": { "type": "string", "minLength": 1, "description": "Optional display name of the event, e.g. \"Typhoon Gaemi\". First-class so the UI never has to parse it out of generatedNote; absent when no storm claim should be made." },
-        "heroFrame": { "type": "integer", "minimum": 0, "description": "Optional index into frames of the most developed frame — where 'enter the storm' should arrive. The pipeline gates it against frames.length (a JSON schema cannot cross-reference); absent, the UI falls back to the last frame." },
-        "placeLabel": { "type": "string", "minLength": 1, "description": "Optional human label for the hero domain, e.g. \"Taiwan · CWA model domain\"." },
-        "invitation": { "type": "string", "minLength": 1, "maxLength": 40, "description": "The action words on the orbit invitation, after the place name. \"enter the storm\" is a claim, and a live daily run has quiet days on which it is false, so a run whose data contains no convection says something else true instead. Derived from the run's own peak reflectivity unless the config states it." },
-        "defaultVariable": { "enum": ["wind10m", "t2m", "mrr", "refc", "prob40", "tcwv", "msl"], "description": "The variable this run should open on. Absent, the UI picks wind10m when present. A run whose headline field is not wind must say so: StormCast exists to produce reflectivity, and opening a convective run on a 10 m wind field scaled for a typhoon shows a near-empty rectangle. The pipeline gates it against the layers actually emitted." },
-        "reportUrl": { "type": "string", "minLength": 1, "description": "Optional URL of this run's verification report page, root-relative on the site (e.g. \"/verification/stormcast-dixie-2025.html\") or absolute. The UI links it from the caveat." },
-        "verification": { "enum": ["pending", "scored"], "description": "Whether this run is enrolled in the observation-scoring loop, and how far it has got. ABSENT means no claim at all — the right value for a run nothing will ever score, such as a Taiwan typhoon with no MRMS coverage. \"pending\" says only that it has not been scored yet, which stays true however long that takes; it is deliberately not a promise about when. \"scored\" requires reportUrl." },
+        "generatedNote": {
+          "type": "string",
+          "description": "The scientific-honesty caption shown in the UI. Required — a build without it fails."
+        },
+        "stormName": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional display name of the event, e.g. \"Typhoon Gaemi\". First-class so the UI never has to parse it out of generatedNote; absent when no storm claim should be made."
+        },
+        "heroFrame": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Optional index into frames of the most developed frame — where 'enter the storm' should arrive. The pipeline gates it against frames.length (a JSON schema cannot cross-reference); absent, the UI falls back to the last frame."
+        },
+        "placeLabel": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional human label for the hero domain, e.g. \"Taiwan · CWA model domain\"."
+        },
+        "invitation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "description": "The action words on the orbit invitation, after the place name. \"enter the storm\" is a claim, and a live daily run has quiet days on which it is false, so a run whose data contains no convection says something else true instead. Derived from the run's own peak reflectivity unless the config states it."
+        },
+        "defaultVariable": {
+          "enum": [
+            "wind10m",
+            "t2m",
+            "mrr",
+            "refc",
+            "prob40",
+            "tcwv",
+            "msl"
+          ],
+          "description": "The variable this run should open on. Absent, the UI picks wind10m when present. A run whose headline field is not wind must say so: StormCast exists to produce reflectivity, and opening a convective run on a 10 m wind field scaled for a typhoon shows a near-empty rectangle. The pipeline gates it against the layers actually emitted."
+        },
+        "reportUrl": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional URL of this run's verification report page, root-relative on the site (e.g. \"/verification/stormcast-dixie-2025.html\") or absolute. The UI links it from the caveat."
+        },
+        "verification": {
+          "enum": [
+            "pending",
+            "scored"
+          ],
+          "description": "Whether this run is enrolled in the observation-scoring loop, and how far it has got. ABSENT means no claim at all — the right value for a run nothing will ever score, such as a Taiwan typhoon with no MRMS coverage. \"pending\" says only that it has not been scored yet, which stays true however long that takes; it is deliberately not a promise about when. \"scored\" requires reportUrl."
+        },
         "verificationSummary": {
           "type": "object",
           "description": "The one measured figure the UI states without the viewer opening the report. Emitted from the scorer's own results, never written by hand. Present only when verification is \"scored\".",
-          "required": ["thresholdDbz", "usefulScaleKm", "usefulHours", "scoredHours", "largestScaleKm"],
+          "required": [
+            "thresholdDbz",
+            "usefulScaleKm",
+            "usefulHours",
+            "scoredHours",
+            "largestScaleKm"
+          ],
           "additionalProperties": false,
           "properties": {
-            "thresholdDbz": { "type": "integer", "description": "Reflectivity threshold the skill was measured at." },
-            "usefulScaleKm": { "type": ["number", "null"], "description": "Smallest neighbourhood width reaching useful skill (0.5 + f0/2). NULL means the run never reached it at any tested scale — a real result that must be shown, not omitted." },
-            "usefulHours": { "type": "integer", "minimum": 0 },
-            "scoredHours": { "type": "integer", "minimum": 1, "description": "Hours scored, excluding spin-up." },
-            "largestScaleKm": { "type": "number", "description": "The largest neighbourhood tested, so \"none at any scale\" can say up to what." }
+            "thresholdDbz": {
+              "type": "integer",
+              "description": "Reflectivity threshold the skill was measured at."
+            },
+            "usefulScaleKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Smallest neighbourhood width at which the MEAN FSS over scorable hours reaches the mean useful line (0.5 + f0/2). NULL means it never does at any tested scale, or nothing was scorable — real results that must be shown, not omitted."
+            },
+            "usefulHours": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "scoredHours": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Scorable hours, excluding spin-up and, under mean-v2, undefined hours. Zero on a no-echo day."
+            },
+            "largestScaleKm": {
+              "type": "number",
+              "description": "The largest neighbourhood tested, so \"none at any scale\" can say up to what."
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "useful",
+                "below-line",
+                "no-echo"
+              ],
+              "description": "Rule mean-v2 verdict: the MEAN FSS over scorable hours reaches the mean useful line (useful), does not at any tested scale (below-line), or nothing was scorable (no-echo). Absent on results scored under the first rule."
+            },
+            "undefinedHours": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Post-spin-up hours excluded as unscorable: FSS undefined (no 40 dBZ mass in either field) or radar coverage below the floor."
+            },
+            "meanFss": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Mean FSS over scorable hours at usefulScaleKm, or at largestScaleKm when below the line. Null when nothing was scorable."
+            },
+            "usefulLine": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "The mean useful line (0.5 + f0/2) over the same hours."
+            },
+            "rule": {
+              "type": "string",
+              "description": "Identifier of the headline rule that produced these figures, e.g. mean-v2; DOCS/Verification-Protocol.md."
+            }
           }
         }
       }
@@ -50,7 +179,10 @@
     "frames": {
       "type": "array",
       "minItems": 1,
-      "items": { "type": "string", "format": "date-time" },
+      "items": {
+        "type": "string",
+        "format": "date-time"
+      },
       "description": "Valid times, one per frame index, strictly increasing. Layer frame arrays index into this."
     },
     "basemap": {
@@ -58,18 +190,52 @@
       "description": "Optional offline-baked basemap imagery. Paths relative to the manifest. Licence must be public-domain or CC-BY (audited in licences/MANIFEST.yaml) — basemaps ship.",
       "additionalProperties": false,
       "properties": {
-        "global": { "type": "string", "description": "Full-globe equirectangular WebP/PNG, dark-styled" },
+        "global": {
+          "type": "string",
+          "description": "Full-globe equirectangular WebP/PNG, dark-styled"
+        },
         "globalRect": {
-          "type": "array", "prefixItems": [
-            { "type": "number" }, { "type": "number" }, { "type": "number" }, { "type": "number" }
-          ], "minItems": 4, "maxItems": 4,
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "minItems": 4,
+          "maxItems": 4,
           "description": "west, south, east, north in degrees; defaults to [-180,-90,180,90]"
         },
-        "hero": { "type": "string", "description": "Crisp regional basemap over the hero rectangle" },
+        "hero": {
+          "type": "string",
+          "description": "Crisp regional basemap over the hero rectangle"
+        },
         "heroRect": {
-          "type": "array", "prefixItems": [
-            { "type": "number" }, { "type": "number" }, { "type": "number" }, { "type": "number" }
-          ], "minItems": 4, "maxItems": 4
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "minItems": 4,
+          "maxItems": 4
         }
       }
     },
@@ -78,36 +244,114 @@
       "minProperties": 1,
       "additionalProperties": {
         "type": "object",
-        "required": ["kind", "variable", "label", "units", "rect", "size", "lut", "vmin", "vmax", "identity", "frames"],
+        "required": [
+          "kind",
+          "variable",
+          "label",
+          "units",
+          "rect",
+          "size",
+          "lut",
+          "vmin",
+          "vmax",
+          "identity",
+          "frames"
+        ],
         "additionalProperties": false,
         "properties": {
-          "kind": { "enum": ["global", "hero-fine", "hero-coarse", "hero-observed"] },
-          "variable": { "enum": ["wind10m", "t2m", "mrr", "refc", "prob40", "tcwv", "msl"] },
-          "label": { "type": "string" },
-          "units": { "type": "string" },
+          "kind": {
+            "enum": [
+              "global",
+              "hero-fine",
+              "hero-coarse",
+              "hero-observed"
+            ]
+          },
+          "variable": {
+            "enum": [
+              "wind10m",
+              "t2m",
+              "mrr",
+              "refc",
+              "prob40",
+              "tcwv",
+              "msl"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "units": {
+            "type": "string"
+          },
           "rect": {
-            "type": "array", "prefixItems": [
-              { "type": "number", "description": "west, degrees" },
-              { "type": "number", "description": "south, degrees" },
-              { "type": "number", "description": "east, degrees" },
-              { "type": "number", "description": "north, degrees" }
-            ], "minItems": 4, "maxItems": 4
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "number",
+                "description": "west, degrees"
+              },
+              {
+                "type": "number",
+                "description": "south, degrees"
+              },
+              {
+                "type": "number",
+                "description": "east, degrees"
+              },
+              {
+                "type": "number",
+                "description": "north, degrees"
+              }
+            ],
+            "minItems": 4,
+            "maxItems": 4
           },
           "size": {
-            "type": "array", "prefixItems": [{ "type": "integer" }, { "type": "integer" }],
-            "minItems": 2, "maxItems": 2, "description": "[width, height] pixels"
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "[width, height] pixels"
           },
-          "lut": { "type": "string", "description": "Path to the 256x1 RGBA LUT PNG shared by every layer of this variable" },
-          "vmin": { "type": "number" },
-          "vmax": { "type": "number" },
-          "identity": { "type": "string", "description": "sha256 of the canonical (variable, lut sha256, vmin, vmax, alphaPolicy) tuple. The build FAILS if two layers of the same variable disagree. The web app asserts coarse/fine equality again at load." },
+          "lut": {
+            "type": "string",
+            "description": "Path to the 256x1 RGBA LUT PNG shared by every layer of this variable"
+          },
+          "vmin": {
+            "type": "number"
+          },
+          "vmax": {
+            "type": "number"
+          },
+          "identity": {
+            "type": "string",
+            "description": "sha256 of the canonical (variable, lut sha256, vmin, vmax, alphaPolicy) tuple. The build FAILS if two layers of the same variable disagree. The web app asserts coarse/fine equality again at load."
+          },
           "frames": {
-            "type": "array", "minItems": 1,
-            "items": { "type": "string" },
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            },
             "description": "Relative WebP path per frame, same length and order as top-level frames"
           },
-          "nativeKm": { "type": "number", "exclusiveMinimum": 0, "description": "Native resolution of the SOURCE model for this layer, in km. First-class because the UI states it to the viewer: the reveal pills used to hardcode \"2 km\" and silently lied the moment a 3 km model shipped. Absent means the UI must say nothing rather than guess." },
-          "pairWith": { "type": "string", "description": "For hero layers: the layer id this one is compared against in the reveal" }
+          "nativeKm": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Native resolution of the SOURCE model for this layer, in km. First-class because the UI states it to the viewer: the reveal pills used to hardcode \"2 km\" and silently lied the moment a 3 km model shipped. Absent means the UI must say nothing rather than guess."
+          },
+          "pairWith": {
+            "type": "string",
+            "description": "For hero layers: the layer id this one is compared against in the reveal"
+          }
         }
       }
     }
