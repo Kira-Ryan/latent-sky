@@ -34,7 +34,11 @@ const CASES = [
       lead: /· \+10 h$/,
       frameZero: /· analysis$/,
       invite: /^Central US · enter the storm$/,
-      noReportLink: true,
+      // An unscored run links the verification RECORD, never a report of its
+      // own: the page everyone lands on is the newest run, which is unscored by
+      // definition, and without this route the scored runs were unreachable.
+      noReportLink: false,
+      linkHref: /\/verification\/index\.html$/,
     },
   },
   {
@@ -85,6 +89,7 @@ for (const c of CASES) {
         ? document.querySelector(".verification").textContent.replace(/\s+/g, " ").trim()
         : null,
       reportLink: !!document.querySelector(".verification a"),
+      linkHref: document.querySelector(".verification a")?.getAttribute("href") ?? "",
       time: document.querySelector(".scrubber .time")?.textContent?.replace(/\s+/g, " ").trim() ?? "",
       aria: document.querySelector(".scrubber input[type=range]")?.getAttribute("aria-valuetext") ?? "",
     }));
@@ -113,6 +118,7 @@ for (const c of CASES) {
   if (e.frameZero) check(e.frameZero.test(at0.time), `frame 0 "${at0.time}" !~ ${e.frameZero}`);
   if (e.invite) check(e.invite.test(at10.invite), `invitation "${at10.invite}" !~ ${e.invite}`);
   check(at10.reportLink === !e.noReportLink, `report link presence wrong (got ${at10.reportLink})`);
+  if (e.linkHref) check(e.linkHref.test(at10.linkHref), `link target wrong (got ${JSON.stringify(at10.linkHref)})`);
   // The spoken form must never leave a screen-reader user with a bare instant.
   if (e.lead) check(/after initialisation/.test(at10.aria), `aria "${at10.aria}" omits the lead time`);
   if (e.frameZero) {

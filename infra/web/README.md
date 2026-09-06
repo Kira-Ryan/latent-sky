@@ -20,7 +20,7 @@ source ../gpu/latentsky.env && ./deploy-site.sh [--dry-run]
 
 Two independent records, deliberately: one that cannot be blocked and one that is pleasant to read.
 
-**CloudFront access logs** are the ground truth. `setup-analytics.sh` turns them on: every request the edge serves is written, within an hour, to the private bucket `latentsky-logs-<account>` under `cloudfront/<distribution>/<yyyy>/<MM>/<dd>/<HH>/`, as JSON lines carrying the time, the viewer's address, country and network, the path and query, the status, the referrer and the user agent. Nothing runs in the page for this, so nothing can block it. Objects expire after 180 days, because raw logs contain addresses and a portfolio site has no reason to hold them longer.
+**CloudFront access logs** are the ground truth. `setup-analytics.sh` turns them on: every request the edge serves is written, within an hour, to the private bucket `latentsky-logs-<account>` under `AWSLogs/<account>/CloudFront/cloudfront/<distribution>/<yyyy>/<MM>/<dd>/<HH>/` (AWS prepends the first three segments to whatever suffix is configured), as gzipped JSON lines carrying the time, the viewer's address, country and network, the path and query, the status, the referrer and the user agent. Nothing runs in the page for this, so nothing can block it. Objects expire after 180 days, because raw logs contain addresses and a portfolio site has no reason to hold them longer.
 
 ```
 source ../gpu/latentsky.env && ./setup-analytics.sh --status   # what exists, newest objects

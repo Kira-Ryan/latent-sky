@@ -26,7 +26,9 @@
 # block it) is a separate, deploy-time concern in deploy-site.sh.
 #
 # Reading the logs: infra/web/visitors.py summarises a day. Object layout under the
-# bucket is cloudfront/<DistributionId>/<yyyy>/<MM>/<dd>/<HH>/… as set by SUFFIX below.
+# bucket is AWSLogs/<account>/CloudFront/cloudfront/<DistributionId>/<yyyy>/<MM>/<dd>/<HH>/…
+# — SUFFIX below plus a fixed AWSLogs/<account>/CloudFront/ prefix that AWS adds and
+# does not document (observed on the first delivery, 6 Sep 2026).
 #
 # Cost: CloudWatch vended-log delivery to S3 is billed per GB delivered (cents per GB);
 # this site's traffic is megabytes a day. Storage is pennies.
@@ -90,7 +92,7 @@ if [[ "$MODE" == status ]]; then
   aws logs describe-deliveries --region "$REGION" \
     --query "deliveries[?deliverySourceName=='${SOURCE_NAME}'].{id:id,dest:deliveryDestinationArn,fields:recordFields}" --output json
   say "── newest log objects"
-  aws s3api list-objects-v2 --bucket "$LOG_BUCKET" --prefix "cloudfront/${DIST_ID}/" \
+  aws s3api list-objects-v2 --bucket "$LOG_BUCKET" --prefix "AWSLogs/${LATENTSKY_AWS_ACCOUNT}/CloudFront/cloudfront/${DIST_ID}/" \
     --query 'sort_by(Contents, &LastModified)[-8:].[LastModified, Size, Key]' --output text 2>/dev/null \
     | sed 's/^/  /' || say "  (none yet)"
   exit 0
@@ -197,5 +199,6 @@ fi
 
 say
 say "access logging is ON. Objects arrive within minutes to an hour, under:"
-say "  s3://${LOG_BUCKET}/cloudfront/${DIST_ID}/<yyyy>/<MM>/<dd>/<HH>/"
+say "  s3://${LOG_BUCKET}/AWSLogs/${LATENTSKY_AWS_ACCOUNT}/CloudFront/cloudfront/${DIST_ID}/<yyyy>/<MM>/<dd>/<HH>/"
+say "  (AWS prepends AWSLogs/<account>/CloudFront/ to the configured suffix; observed, not documented)"
 say "Summarise a day with:  python visitors.py --date YYYY-MM-DD"

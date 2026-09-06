@@ -109,7 +109,10 @@ const measure_file = (p) => {
   return [1, size, size];
 };
 
-addGroup("app (dist, excl. cesium static)", DIST, new Set(["cesium"]));
+// data/ and verification/ under dist are deploy-site.sh's staging copies, present
+// only after a local deploy; counting them as "app" tripled the figure (32.9 MB
+// on 6 Sep 2026). The data is measured from data/web below, per event.
+addGroup("app (dist, excl. cesium static and deploy staging)", DIST, new Set(["cesium", "data", "verification"]));
 if (existsSync(join(DIST, "cesium"))) {
   addGroup("cesium static (dist/cesium — all of it; a session fetches less)", join(DIST, "cesium"));
 }
@@ -121,6 +124,10 @@ if (existsSync(join(DIST, "cesium"))) {
 // open. So each event is measured by resolving its own manifest — the exact files
 // the browser requests — rather than by guessing from directory names, which
 // mis-attributes the shared basemap and the global event's layer tree.
+// A referenced file that does not exist is not "zero bytes": it is a frame the
+// browser will 404 on. Skipping it undercounted the payload and hid the defect;
+// the gate now fails on it (exit 2), the same way it fails on a missing dist.
+const missing = [];
 const resolveEvent = (manifestRel) => {
   const mPath = join(DATA, manifestRel);
   if (!existsSync(mPath)) return null;
@@ -137,7 +144,10 @@ const resolveEvent = (manifestRel) => {
   raw += mr; transfer += mt;
   for (const rel of rels) {
     const p = join(base, rel);
-    if (!existsSync(p)) continue;
+    if (!existsSync(p)) {
+      missing.push(`${manifestRel} -> ${rel}`);
+      continue;
+    }
     const [f, r, t] = measure_file(p);
     files += f; raw += r; transfer += t;
   }
@@ -193,6 +203,12 @@ if (!dataPresent) {
 }
 if (unknownExts.size) {
   console.log(`Note: unknown extensions counted at raw size (conservative): ${[...unknownExts].sort().join(", ")}`);
+}
+
+if (missing.length) {
+  console.log(`\nMISSING: ${missing.length} file(s) referenced by a manifest do not exist — the browser would 404 on them:`);
+  for (const m of missing.slice(0, 20)) console.log(`  ${m}`);
+  process.exit(2);
 }
 
 if (total <= ceiling) {

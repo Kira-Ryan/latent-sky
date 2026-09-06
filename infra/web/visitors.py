@@ -77,8 +77,16 @@ def field(rec: dict, *names: str):
     return None
 
 
-def read_day(s3, bucket: str, dist: str, day: dt.date) -> list[dict]:
-    prefix = f"cloudfront/{dist}/{day:%Y}/{day:%m}/{day:%d}/"
+def log_prefix(account: str, dist: str, day: dt.date) -> str:
+    """Where a day's objects live. The delivery's suffix path is
+    cloudfront/{DistributionId}/{yyyy}/{MM}/{dd}/{HH}, and AWS prepends a fixed
+    AWSLogs/{account}/CloudFront/ to it whatever suffix is configured (observed
+    6 Sep 2026; the console and the API reference are both silent about it)."""
+    return f"AWSLogs/{account}/CloudFront/cloudfront/{dist}/{day:%Y}/{day:%m}/{day:%d}/"
+
+
+def read_day(s3, bucket: str, account: str, dist: str, day: dt.date) -> list[dict]:
+    prefix = log_prefix(account, dist, day)
     records: list[dict] = []
     for page in s3.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix):
         for obj in page.get("Contents", []):
@@ -98,8 +106,15 @@ def read_day(s3, bucket: str, dist: str, day: dt.date) -> list[dict]:
     return records
 
 
+def is_bot(ua: str) -> bool:
+    """Crawlers and probes by name, and anything that does not even claim to be a
+    browser: the first hour of logs held a scanner whose user agent was the URL
+    it was probing. Every real browser, including every mobile one, says Mozilla/."""
+    return bool(BOT_UA.search(ua)) or not ua.startswith("Mozilla/")
+
+
 def summarise(records: list[dict]) -> dict:
-    humans = [r for r in records if not BOT_UA.search(str(field(r, "cs(User-Agent)", "cs-user-agent", "user_agent") or ""))]
+    humans = [r for r in records if not is_bot(str(field(r, "cs(User-Agent)", "cs-user-agent", "user_agent") or ""))]
     bots = len(records) - len(humans)
 
     def stem(r): return str(field(r, "cs-uri-stem", "uri_stem") or "")
@@ -202,7 +217,7 @@ def main(argv=None) -> None:
     days = [args.date - dt.timedelta(days=i) for i in range(args.days - 1, -1, -1)]
     per_day: dict[str, list[dict]] = {}
     for day in days:
-        per_day[day.isoformat()] = read_day(s3, bucket, args.distribution, day)
+        per_day[day.isoformat()] = read_day(s3, bucket, account, args.distribution, day)
 
     everything = [r for recs in per_day.values() for r in recs]
     if args.raw:
@@ -220,7 +235,7 @@ def main(argv=None) -> None:
         return
 
     span = summary["range"][0] if len(days) == 1 else f"{summary['range'][0]} to {summary['range'][1]}"
-    print(f"latent-sky.dev — {span} (UTC)")
+    print(f"latent-sky.dev, {span} (UTC)")
     if not everything:
         print("  no log objects for this range. Logs arrive within minutes to an hour of a request;"
               " if the range is older than the logging setup, there is nothing to read.")
@@ -236,7 +251,7 @@ def main(argv=None) -> None:
     table("forecasts opened (manifest loads)", summary["forecasts_opened"])
     table("arrived by a direct event link", summary["arrived_by_event_link"])
     table("verification reports read", summary["reports_read"])
-    table("origin errors seen by humans (status, path)", [(f"{s} {p}", n) for s, p, n in summary["errors"]], width=60)
+    table("origin errors behind a browser request (status, path)", [(f"{s} {p}", n) for s, p, n in summary["errors"]], width=60)
 
 
 if __name__ == "__main__":
