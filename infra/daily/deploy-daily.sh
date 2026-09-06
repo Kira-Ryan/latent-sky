@@ -172,6 +172,12 @@ cat > "$POLICY" <<EOF
 EOF
 aws_mutate iam put-role-policy --role-name "$ROLE" --policy-name latentsky-daily --policy-document "file://$POLICY"
 
+# ── 3b. The tests, before anything reaches production ─────────────────────
+# A deploy runs from the working tree, so CI cannot gate it; the suite must run
+# here. It is fast and cloud-free. A red suite deploys nothing.
+say "── tests (infra/daily)"
+python -m pytest -q "$HERE_NATIVE" || { say "REFUSING: the Lambda tests fail; nothing was deployed"; exit 1; }
+
 # ── 4. Functions ───────────────────────────────────────────────────────────
 zip_one() {  # $1 = module basename [$2... extra files] -> prints the native zip path
   local mod=$1 zip="$NATIVE_TMP/latentsky-${mod}.zip"

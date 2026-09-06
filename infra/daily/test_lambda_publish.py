@@ -168,3 +168,108 @@ def _fake_site_tar(event_id: str) -> bytes:
             info = tarfile.TarInfo(name); info.size = len(body)
             t.addfile(info, io.BytesIO(body))
     return buf.getvalue()
+
+
+class GuardedS3:
+    """S3 with the error classes the publisher must tell apart."""
+
+    class exceptions:
+        class ClientError(Exception):
+            def __init__(self, code):
+                super().__init__(code)
+                self.response = {"Error": {"Code": code}}
+
+        class NoSuchKey(Exception):
+            pass
+
+    def __init__(self, site, data, index_error=None):
+        self.site, self.data, self.index_error, self.puts = site, data, index_error, []
+
+    def _store(self, bucket):
+        return self.site if bucket == lp.SITE_BUCKET else self.data
+
+    def get_object(self, Bucket, Key):
+        import io
+        if Bucket == lp.SITE_BUCKET and Key == "verification/index.json" and self.index_error is not None:
+            raise self.index_error
+        store = self._store(Bucket)
+        if Key not in store:
+            raise self.exceptions.NoSuchKey(Key)
+        return {"Body": io.BytesIO(store[Key])}
+
+    def put_object(self, Bucket, Key, Body, **kw):
+        self.puts.append(Key)
+        self._store(Bucket)[Key] = Body if isinstance(Body, bytes) else Body.encode()
+
+    def head_object(self, Bucket, Key):
+        if Key not in self._store(Bucket):
+            raise self.exceptions.ClientError("404")
+        return {}
+
+
+def _wire(monkeypatch, fake):
+    import json as _json
+    monkeypatch.setattr(lp, "s3", fake)
+    monkeypatch.setattr(lp, "invalidate", lambda paths: "INV")
+    monkeypatch.setattr(lp.time, "sleep", lambda s: None)
+    return _json
+
+
+def _record_with(*ids):
+    import json as _json
+    return _json.dumps({"schemaVersion": 1, "runs": [
+        {"id": i, "title": i, "init": "2026-09-01T12:00:00Z", "scored": True, "liveUrl": None,
+         "members": 1, "reportUrl": f"/verification/{i}.html", "headline": None} for i in ids]}).encode()
+
+
+def test_a_transient_record_read_failure_never_overwrites_it(monkeypatch):
+    """The review's finding: any read failure was treated as 'no history', the
+    record was rewritten with one row, and the publish reported success."""
+    import json as _json
+    fake = GuardedS3(
+        {"data/web/catalogue.json": _json.dumps(CURATED).encode(),
+         "verification/index.json": _record_with("daily-2026-09-01")},
+        {"daily/2026-09-04/site.tar.gz": _fake_site_tar("daily-2026-09-04")},
+        index_error=GuardedS3.exceptions.ClientError("AccessDenied"),
+    )
+    _wire(monkeypatch, fake)
+    with pytest.raises(GuardedS3.exceptions.ClientError):
+        lp.publish_site("2026-09-04", "daily/2026-09-04/site.tar.gz", verified=False)
+    assert "verification/index.json" not in fake.puts, "the record was overwritten after a failed read"
+    assert _json.loads(fake.site["verification/index.json"])["runs"][0]["id"] == "daily-2026-09-01"
+
+
+def test_a_definitely_missing_record_is_started(monkeypatch):
+    import json as _json
+    fake = GuardedS3({"data/web/catalogue.json": _json.dumps(CURATED).encode()},
+                     {"daily/2026-09-04/site.tar.gz": _fake_site_tar("daily-2026-09-04")})
+    _wire(monkeypatch, fake)
+    lp.publish_site("2026-09-04", "daily/2026-09-04/site.tar.gz", verified=False)
+    assert [r["id"] for r in _json.loads(fake.site["verification/index.json"])["runs"]] == ["daily-2026-09-04"]
+
+
+def test_an_unscored_tree_cannot_overwrite_a_scored_day(monkeypatch):
+    """A replayed or re-uploaded plain site tar after the verified one would
+    replace the radar layer and the report link while every marker said scored."""
+    import json as _json
+    fake = GuardedS3({"data/web/catalogue.json": _json.dumps(CURATED).encode(),
+                      "verification/index.json": _record_with("daily-2026-09-04")},
+                     {"daily/2026-09-04/site.tar.gz": _fake_site_tar("daily-2026-09-04"),
+                      "daily/2026-09-04/scored.json": b"{}"})
+    _wire(monkeypatch, fake)
+    with pytest.raises(RuntimeError, match="already scored"):
+        lp.publish_site("2026-09-04", "daily/2026-09-04/site.tar.gz", verified=False)
+    assert fake.puts == [], "something was uploaded before the refusal"
+
+
+def test_a_scored_publish_without_its_results_fails(monkeypatch):
+    """pod_daily.sh uploads fss.json before the verified tar; if it is not there
+    the ordering broke, and a scored row with no figure must not be written."""
+    import json as _json
+    fake = GuardedS3({"data/web/catalogue.json": _json.dumps(CURATED).encode(),
+                      "verification/index.json": _record_with("daily-2026-09-01")},
+                     {"daily/2026-09-04/site-verified.tar.gz": _fake_site_tar("daily-2026-09-04")})
+    _wire(monkeypatch, fake)
+    with pytest.raises(GuardedS3.exceptions.NoSuchKey):
+        lp.publish_site("2026-09-04", "daily/2026-09-04/site-verified.tar.gz", verified=True)
+    assert "verification/index.json" not in fake.puts

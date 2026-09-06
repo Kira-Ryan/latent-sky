@@ -48,7 +48,12 @@ export interface GlobeApi {
    * one, and resolve once its first frame is on screen. This is the event
    * switch.
    */
-  load(manifest: Manifest): Promise<void>;
+  /**
+   * Build a session for the manifest, opening on `variable` (the store's
+   * choice: the run's declared default, else wind10m). Resolves only once the
+   * opening frames are decoded and on screen; rejects if they cannot be.
+   */
+  load(manifest: Manifest, variable?: Variable): Promise<void>;
   setFrame(f: number): void;
   setPlaying(playing: boolean): void;
   setSpeed(speed: number): void;
@@ -140,12 +145,21 @@ export async function createGlobe(
     widget.scene.requestRender();
   }
 
-  async function load(manifest: Manifest): Promise<void> {
+  async function load(manifest: Manifest, variable?: Variable): Promise<void> {
     if (destroyed) throw new Error("load() after destroy");
 
     const variables = availableVariables(manifest);
     if (variables.length === 0) throw new Error("manifest declares no renderable layers");
-    const initialVariable: Variable = variables.includes("wind10m") ? "wind10m" : variables[0];
+    // The caller's variable is the store's, which already honours the run's
+    // declared default. Building on wind regardless fetched 3.27 MB of wind
+    // frames on every StormCast open, reported ready on them, and threw them
+    // away when the store's first sync switched to reflectivity.
+    const initialVariable: Variable =
+      variable !== undefined && variables.includes(variable)
+        ? variable
+        : variables.includes("wind10m")
+          ? "wind10m"
+          : variables[0];
 
     disposeSession();
 
@@ -157,6 +171,7 @@ export async function createGlobe(
     let renderer: Renderer | undefined;
     let director: CameraDirector | undefined;
     let removeAnchor: (() => void) | undefined;
+    let tiles: TilesLoaded | undefined;
     try {
       // Base imagery first, so it lands at collection index 0 and every field
       // stack composites above it.
@@ -183,6 +198,25 @@ export async function createGlobe(
 
       renderer.applyState({ frame: 0 }); // builds the initial stacks and requests the first render
 
+      // Start watching the tile queue NOW, before the frame await below yields.
+      // On an event switch the base tiles are already cached, so the queue can
+      // fill and drain inside that await; a listener attached afterwards would
+      // never see a loading phase and never resolve.
+      tiles = tilesLoaded(widget);
+
+      // Ready means the weather is on screen, not that Cesium's tile queue is
+      // empty. With every frame 404ing (or a CDN answering with the app shell
+      // and a 200), the queue empties in under two seconds and this used to
+      // resolve: a dark planet under a weather legend, and no visible error.
+      // Await the opening frame of every layer the opening variable draws; a
+      // failed fetch or decode rejects load(), the catch below leaves the globe
+      // clean, and the app shows the error. Same URLs the stacks request, so
+      // the ring serves one fetch to both.
+      const opening = [...manifest.layers.values()]
+        .filter((l) => l.variable === initialVariable)
+        .map((l) => l.frameUrls[0]);
+      await Promise.all(opening.map((url) => ring.get(url)));
+
       // Clock driver: while animating, clock time is the source of truth for frame.
       const sessionRenderer = renderer;
       const removeTick = widget.clock.onTick.addEventListener((clock) => {
@@ -195,6 +229,7 @@ export async function createGlobe(
 
       session = { timeline, renderer, director, removeTick, removeAnchor };
     } catch (err: unknown) {
+      tiles?.cancel();
       removeAnchor?.();
       director?.destroy();
       renderer?.destroy();
@@ -205,7 +240,7 @@ export async function createGlobe(
 
     // Resolve once every queued tile (base layer + field layers) has loaded, so
     // callers — and the smoke test — know the first real frame is on screen.
-    await tilesLoaded(widget);
+    await tiles.done;
   }
 
   return {
@@ -293,23 +328,31 @@ export async function createGlobe(
   };
 }
 
-function tilesLoaded(widget: CesiumWidget): Promise<void> {
+interface TilesLoaded {
+  done: Promise<void>;
+  /** Detach the listener without resolving; for a load() that fails after attaching. */
+  cancel: () => void;
+}
+
+function tilesLoaded(widget: CesiumWidget): TilesLoaded {
   // globe.tilesLoaded is trivially true before the first render populates the
   // quadtree, so an unguarded check resolves before anything is on screen.
   // Require a loading phase to have been observed before trusting "loaded".
   const globe = widget.scene.globe;
-  return new Promise((resolve) => {
+  let remove: (() => void) | undefined;
+  const done = new Promise<void>((resolve) => {
     let seenLoading = false;
-    const remove = globe.tileLoadProgressEvent.addEventListener((remaining: number) => {
+    remove = globe.tileLoadProgressEvent.addEventListener((remaining: number) => {
       if (remaining > 0) {
         seenLoading = true;
         return;
       }
       if (seenLoading && globe.tilesLoaded) {
-        remove();
+        remove?.();
         resolve();
       }
     });
     widget.scene.requestRender();
   });
+  return { done, cancel: () => remove?.() };
 }

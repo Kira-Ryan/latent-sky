@@ -9,9 +9,11 @@ of static files that any laptop can render in CesiumJS on integrated graphics.
 NVIDIA's own interactive Earth-2 visualisations pixel-stream from cloud GPUs. This one is a folder
 of files.
 
-> **Status: pre-release.** The architecture is decided and measured (`DOCS/Architecture.md`), the
-> renderer is being built against real sample data, and the first full forecast run is pending GPU
-> quota. Nothing here is a live link yet.
+> **Status: live.** [latent-sky.dev](https://latent-sky.dev/) publishes a new central-US StormCast
+> forecast every day, initialised at 12Z and on the site by about 16:30 UTC, and scores the previous
+> run against MRMS radar the next day. The scores are published whatever they say: see the
+> [verification record](https://latent-sky.dev/verification/index.html). The Taiwan typhoon case
+> studies and the March 2025 outbreak ensemble sit beside the daily runs as curated events.
 
 ## The one number
 

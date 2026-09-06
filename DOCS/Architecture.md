@@ -639,7 +639,8 @@ latent-sky/
 │
 ├── .github/workflows/
 │   ├── web.yml                 # tsc, vite build, PAYLOAD GATE, Playwright smoke, deploy
-│   ├── encode-determinism.yml  # re-encode from released Zarr; git diff --exit-code data/web/
+│   ├── encode-determinism.yml  # pipeline pytest; the release re-encode gate is NOT live (see below)
+│   ├── infra.yml               # the daily Lambdas' tests (launch, publish, check)
 │   └── licences.yml            # fails if any config references an asset missing from MANIFEST
 │
 ├── licences/MANIFEST.yaml      # name, uri, sha256, licence, redistributable?, checked_on
@@ -701,9 +702,9 @@ A second trap, found by building it: **`vite-plugin-static-copy` copies only at 
 | Pipeline source, `uv.lock`, configs with exact init/revisions/seeds, LUT PNGs, schemas, <500 KB sample | **Committed to git** | Free to reproduce, expensive to require |
 | The ~6 MB of final encoded WebP | **Committed to git** | Makes the deployable artefact a plain checkout — the project's whole thesis |
 | The ~180 MB intermediate Zarr | **GitHub Release asset** | Costs a rented GPU and a weekend; a diffusion sampler can never be byte-reproduced |
-| Everything downstream of the Zarr | **Regenerated on demand, never required** | `make encode` |
+| Everything downstream of the Zarr | **Regenerated on demand, never required** | the encoder CLIs (`python -m latentsky.encode_stormcast`, `encode_forecast`, `encode_public`) |
 
-The highest-value CI job in the repository is `encode-determinism.yml`: it downloads the released Zarr, re-encodes, and **diffs against the committed assets**. That makes the encoder's determinism a gate rather than a hope, and it catches LUT drift, range drift and encoder-version drift automatically.
+The CI job this design intended as its highest-value gate, a re-encode from a released Zarr diffed against the committed assets, **is not live and never has been**: no Release has carried a Zarr, and the daily runs never enter git at all (the pod publishes straight to S3; only the curated events are committed). What runs on every push is the pipeline suite, which includes a two-clean-encodes inventory-and-bytes comparison for the public tree and the identity guards that refuse to pair a run with another run's stores or results. Making the release gate real is future work, stated here so the document does not describe a check the repository does not perform.
 
 One thing this design deliberately never does: **fetch a Release asset from a browser.** The final `release-assets.githubusercontent.com` hop carries zero `Access-Control-Allow-Origin` headers, forces `Content-Disposition: attachment`, and its JWT gate expires in about five minutes. Releases are a developer-machine channel via `gh release download`, nothing more. (Git LFS is equally dead for this purpose — GitHub's own docs state it cannot be used with Pages.)
 

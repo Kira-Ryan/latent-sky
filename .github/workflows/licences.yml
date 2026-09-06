@@ -10,6 +10,11 @@ on:
       - "pipeline/**"
       - "licences/**"
       - ".github/workflows/licences.yml"
+  pull_request:
+    paths:
+      - "pipeline/**"
+      - "licences/**"
+      - ".github/workflows/licences.yml"
   workflow_dispatch:
 
 jobs:

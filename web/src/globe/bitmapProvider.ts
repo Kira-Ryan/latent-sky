@@ -40,7 +40,10 @@ export class BitmapRing {
     private onDecoded?: () => void,
   ) {}
 
+  static readonly FETCH_TIMEOUT_MS = 30_000;
+
   get(url: string): Promise<ImageBitmap> {
+    const FETCH_TIMEOUT_MS = BitmapRing.FETCH_TIMEOUT_MS;
     const hit = this.cache.get(url);
     if (hit) {
       // refresh LRU position
@@ -48,7 +51,9 @@ export class BitmapRing {
       this.cache.set(url, hit);
       return hit;
     }
-    const promise = fetch(url)
+    // Bounded: a request that never completes would otherwise leave load()
+    // pending forever and the app in "switching" with no error to act on.
+    const promise = fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
       .then((response) => {
         if (!response.ok) {
           throw new Error(`frame fetch failed: ${response.status} ${response.statusText} for ${url}`);

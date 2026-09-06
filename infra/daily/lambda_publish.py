@@ -214,6 +214,17 @@ def read_site_json(key: str) -> dict:
     return json.loads(s3.get_object(Bucket=SITE_BUCKET, Key=key)["Body"].read())
 
 
+def key_exists(bucket: str, key: str) -> bool:
+    """True if the object exists; a definite 404 is False; anything else raises."""
+    try:
+        s3.head_object(Bucket=bucket, Key=key)
+        return True
+    except s3.exceptions.ClientError as exc:
+        if exc.response["Error"]["Code"] in ("404", "NoSuchKey", "NotFound"):
+            return False
+        raise
+
+
 def write_site_json(key: str, doc: dict) -> None:
     s3.put_object(Bucket=SITE_BUCKET, Key=key, Body=(json.dumps(doc, indent=2) + "\n").encode(),
                   ContentType="application/json", CacheControl=NOCACHE)
@@ -251,7 +262,11 @@ def update_index(row: dict) -> list[str]:
     for attempt in (1, 2, 3):
         try:
             before = read_site_json(key)
-        except Exception:
+        except s3.exceptions.NoSuchKey:
+            # Only a DEFINITE missing object starts a fresh record. This used to
+            # catch everything, so throttling, a permissions regression or a
+            # timeout became "no history", overwrote the public record with one
+            # row and reported success. Found in review, 6 Sep 2026.
             before = {"schemaVersion": 1, "runs": []}
         write_site_json(key, merge_index(before, row))
         time.sleep(1)
@@ -297,6 +312,13 @@ def terminate_pod(date: str) -> str:
 
 
 def publish_site(date: str, key: str, verified: bool) -> dict:
+    # A day that has been scored is never regressed by an unscored tree. The
+    # plain site tar can arrive again after the verified one (a replayed event,
+    # a re-upload by hand) and would otherwise replace the radar layer and the
+    # report link with the pre-verification tree while every marker still said
+    # "scored". Refuse, loudly; the verified tar can always be re-uploaded.
+    if not verified and key_exists(DATA_BUCKET, f"daily/{date}/scored.json"):
+        raise RuntimeError(f"{date} is already scored; refusing to overwrite it with an unscored tree")
     tar_bytes = s3.get_object(Bucket=DATA_BUCKET, Key=key)["Body"].read()
     manifest = upload_tree(tar_bytes, date)
     before, after = update_catalogue(daily_entry(date, manifest, verified))
@@ -304,12 +326,11 @@ def publish_site(date: str, key: str, verified: bool) -> dict:
     # reader sees the whole series rather than only the days that scored well.
     # A scored row reads its headline from the results the pod uploaded, which
     # pod_daily.sh always PUTs before the site tar, so the figure exists by then.
+    # If it does not, that ordering has broken and the publish must fail rather
+    # than list a scored run with no figure.
     fss = None
     if verified:
-        try:
-            fss = json.loads(s3.get_object(Bucket=DATA_BUCKET, Key=f"daily/{date}/fss.json")["Body"].read())
-        except Exception as exc:
-            print(f"{date}: no results file for the index row ({type(exc).__name__})")
+        fss = json.loads(s3.get_object(Bucket=DATA_BUCKET, Key=f"daily/{date}/fss.json")["Body"].read())
     listed = update_index(index_row(date, manifest, fss, verified))
     print(f"verification record now lists {len(listed)} run(s)")
     paths = ["/data/web/catalogue.json", f"/data/web/daily/{date}/manifest.json", "/verification/index.json"]

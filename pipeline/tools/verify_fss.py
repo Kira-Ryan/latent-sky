@@ -88,10 +88,18 @@ def main(argv: list[str] | None = None) -> None:
         stacks = []
         for p in args.member:
             h = zarr.open(str(p), mode="r")
-            if not np.array_equal(np.asarray(h["lead_time"]).astype("timedelta64[ns]"), leads):
-                raise SystemExit(f"{p}: lead_time axis differs from the scored run's")
+            # Every member is sampled with the scored run's coordinates, so a
+            # member from another day or another grid would be scored as if it
+            # sat on this one. The encoder makes the same check; a store that
+            # fails it must never reach the probability field or the score.
+            for key in ("lat", "lon", "time", "lead_time"):
+                if not np.array_equal(np.asarray(h[key]), np.asarray(hero[key])):
+                    raise SystemExit(f"{p}: {key} differs from the scored run's store")
             stacks.append(verify.forecast_on_grid(h, hlat, hlon, grid))
             member_seeds.append(h.attrs.get("seed"))
+        if None in member_seeds or len(set(member_seeds)) != len(member_seeds):
+            raise SystemExit(f"member seeds must be present and distinct, got {member_seeds}; "
+                             f"two members with one seed are one member counted twice")
         members = np.stack(stacks)
         print(f"ensemble: {members.shape[0]} members, seeds {member_seeds}")
 

@@ -101,13 +101,28 @@ def open_stores(coarse_path: pathlib.Path) -> tuple:
 
 
 def frame_times(coarse, hero) -> list[str]:
-    """ISO instants for the hero window: init + each hero lead_time."""
+    """ISO instants for the hero window: init + each hero lead_time.
+
+    Both stores must be the same forecast: coarse frames are read by index
+    beside hero frames, so a hero store from another run, or a coarse lead axis
+    that differs frame for frame, would label one run's fields with another's
+    times in a manifest the schema accepts.
+    """
     init = np.asarray(coarse["time"])[0]
-    leads = np.asarray(hero["lead_time"])
-    return [
-        np.datetime_as_string(init + lead.astype("timedelta64[ns]"), unit="s") + "Z"
-        for lead in leads
-    ]
+    hero_init = np.asarray(hero["time"])[0]
+    if hero_init != init:
+        raise EncodeForecastError(
+            f"the hero store is initialised at {hero_init} but the coarse store at {init}: "
+            f"these are not the same forecast"
+        )
+    leads = np.asarray(hero["lead_time"]).astype("timedelta64[ns]")
+    coarse_leads = np.asarray(coarse["lead_time"]).astype("timedelta64[ns]")
+    if len(coarse_leads) < len(leads) or not np.array_equal(coarse_leads[: len(leads)], leads):
+        raise EncodeForecastError(
+            "the coarse store's lead axis does not match the hero store's frame for frame; "
+            "coarse frames are read by index, so the frames would be mislabelled"
+        )
+    return [np.datetime_as_string(init + lead, unit="s") + "Z" for lead in leads]
 
 
 def taiwan_subset(coarse) -> tuple[np.ndarray, np.ndarray, np.ndarray]:

@@ -61,7 +61,7 @@
  *
  *   CHANNEL=chromium node tests/smoke.spec.mjs
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -107,10 +107,44 @@ for (const path of [...FIXTURES.map((f) => f.manifest), CATALOGUE, CATALOGUE_SIN
 
 const failures = [];
 
+/**
+ * Manifests derived from the committed hero fixture with EVERY frame pointed at a
+ * path that does not exist, served from memory so nothing derived is written into
+ * dev-fixture/. Two shapes of "absent", because production has both:
+ *   404  ../data/web/... -> a real 404 from the dev data middleware (S3 semantics)
+ *   spa  a path under /dev-fixture/ -> Vite answers 200 with index.html, exactly
+ *        what the CloudFront 403/404 -> /index.html mapping does on the live site,
+ *        so the "frame" is HTML that fails to decode.
+ */
+function missingFrameManifests() {
+  const base = JSON.parse(readFileSync(join(ROOT, "dev-fixture", "manifest.json"), "utf8"));
+  const derive = (prefix) => {
+    const m = structuredClone(base);
+    for (const layer of Object.values(m.layers)) layer.frames = layer.frames.map((f) => prefix + f);
+    return JSON.stringify(m);
+  };
+  const routes = {
+    "/dev-fixture/manifest-missing-404.json": derive("../data/web/__no_such_run__/"),
+    "/dev-fixture/manifest-missing-spa.json": derive("__no_such_dir__/"),
+  };
+  return {
+    name: "latent-sky-missing-frame-fixtures",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const body = routes[(req.url ?? "").split("?")[0]];
+        if (!body) return next();
+        res.setHeader("content-type", "application/json");
+        res.end(body);
+      });
+    },
+  };
+}
+
 const server = await createServer({
   root: ROOT,
   server: { port: PORT, strictPort: true },
   logLevel: "warn",
+  plugins: [missingFrameManifests()],
 });
 await server.listen();
 
@@ -299,7 +333,7 @@ async function runFixture(fixture) {
       );
       check(
         stripText ===
-          "Global view: 0.5° reanalysis · kilometre-scale AI detail arrives with the first forecast run",
+          "Global view: 0.5° reanalysis · the forecasts in the menu carry kilometre-scale AI detail",
         "quiet pre-forecast strip present with the built-in copy",
         JSON.stringify(stripText),
       );
@@ -766,6 +800,96 @@ async function runMissingCatalogue(name, missing) {
   }
 }
 
+/**
+ * Missing weather. The manifest is valid and every frame is absent. Ready must
+ * NOT be reported and the failure must be on screen: until 6 Sep 2026 the app
+ * took Cesium's empty tile queue as ready, so a run whose frames all 404ed (or
+ * arrived as the app shell with a 200) showed a dark planet under an intact
+ * weather legend and said nothing. The legend now sits beside a visible error,
+ * which is an honest state; a legend alone was not.
+ */
+async function runMissingFrames(name, manifest, expectCause) {
+  console.log(`\n=== scenario: ${name} (${manifest}) ===`);
+  const check = checker(name);
+  const page = await browser.newPage({ viewport: { width: 1100, height: 750 } });
+  const diag = attachDiagnostics(page);
+  try {
+    await page.goto(`http://localhost:${PORT}/?manifest=${manifest}&test=1`, { waitUntil: "load" });
+    const panel = page.locator(".boot-error");
+    await panel.waitFor({ state: "visible", timeout: 60_000 });
+    const text = (await panel.textContent()) ?? "";
+    check(expectCause.test(text), "the failure is on screen and names its cause", text.slice(0, 140));
+    const ready = await page.evaluate(() => globalThis.__latentSky?.ready === true);
+    check(!ready, "the app does NOT report ready without its weather", `ready=${ready}`);
+  } catch (err) {
+    console.error(`\n[${name}] SUITE ABORTED:`, err);
+    if (diag.consoleErrors.length) console.error("console errors:", diag.consoleErrors.slice(0, 5));
+    failures.push(`[${name}] suite aborted: ${err}`);
+  } finally {
+    await page.close();
+  }
+}
+
+/**
+ * The stale legend. The wind LUT is held in flight while the user switches to
+ * water vapour; when the wind LUT finally arrives it must draw NOTHING. Until
+ * 6 Sep 2026 it painted wind's ramp under water vapour's label. A fresh browser
+ * context, because the earlier scenarios have the wind LUT in the shared cache
+ * and a cached image is never requested, so the hold would never engage.
+ */
+async function runStaleLegend() {
+  const name = "stale-legend";
+  console.log(`\n=== scenario: ${name} ===`);
+  const check = checker(name);
+  const context = await browser.newContext({ viewport: { width: 1100, height: 750 } });
+  const page = await context.newPage();
+  let releaseWind = null;
+  await page.route(/luts\/wind10m\.lut\.png/, (route) => {
+    releaseWind = () => route.continue();
+  });
+  try {
+    await page.goto(`http://localhost:${PORT}/?manifest=/dev-fixture/manifest.json&test=1`, { waitUntil: "load" });
+    await page.waitForFunction(() => globalThis.__latentSky?.ready === true, null, { timeout: 60_000 });
+    check(releaseWind !== null, "the opening variable's LUT request was intercepted and is being held");
+    await page.evaluate(() => globalThis.__latentSky.setVariable("tcwv"));
+    await page.waitForTimeout(1500); // water vapour's LUT (not held) decodes and draws
+    if (releaseWind) releaseWind(); // the stale wind LUT arrives AFTER the switch
+    await page.waitForTimeout(1500);
+    const [legend, tcwv, wind] = await page.evaluate(async () => {
+      const c = document.querySelector(".legend canvas");
+      if (!c) throw new Error("no legend canvas");
+      const at = (ctx, w, h) => [...ctx.getImageData(w - 2, Math.floor(h / 2), 1, 1).data].slice(0, 3);
+      const paint = async (url) => {
+        const img = new Image();
+        img.src = url;
+        await img.decode();
+        const t = document.createElement("canvas");
+        t.width = c.width;
+        t.height = c.height;
+        const ctx = t.getContext("2d");
+        ctx.imageSmoothingEnabled = false;
+        ctx.fillStyle = "#070c1a";
+        ctx.fillRect(0, 0, t.width, t.height);
+        ctx.drawImage(img, 0, 0, t.width, t.height);
+        return at(ctx, t.width, t.height);
+      };
+      return [
+        at(c.getContext("2d"), c.width, c.height),
+        await paint("/dev-fixture/luts/tcwv.lut.png"),
+        await paint("/dev-fixture/luts/wind10m.lut.png"),
+      ];
+    });
+    const dist = (a, b) => Math.max(...a.map((v, i) => Math.abs(v - b[i])));
+    check(dist(tcwv, wind) > 8, "the two ramps differ at the sampled pixel, so the check can tell them apart", `tcwv=${tcwv} wind=${wind}`);
+    check(dist(legend, tcwv) <= 8, "the legend shows the CURRENT variable's ramp after the stale LUT resolved", `legend=${legend} tcwv=${tcwv} wind=${wind}`);
+  } catch (err) {
+    console.error(`\n[${name}] SUITE ABORTED:`, err);
+    failures.push(`[${name}] suite aborted: ${err}`);
+  } finally {
+    await context.close();
+  }
+}
+
 let exitCode = 1;
 try {
   for (const fixture of FIXTURES) {
@@ -776,10 +900,13 @@ try {
   await runSingleEventCatalogue();
   await runMissingCatalogue("catalogue-404", "/data/web/no-such-catalogue.json");
   await runMissingCatalogue("catalogue-spa-fallback", "/dev-fixture/no-such-catalogue.json");
+  await runMissingFrames("frames-404", "/dev-fixture/manifest-missing-404.json", /frame fetch failed: 404/);
+  await runMissingFrames("frames-spa-fallback", "/dev-fixture/manifest-missing-spa.json", /decod/i);
+  await runStaleLegend();
   exitCode = failures.length === 0 ? 0 : 1;
   console.log(
     failures.length === 0
-      ? `\nSMOKE TEST PASSED (${FIXTURES.length} manifest fixtures + 5 catalogue scenarios)`
+      ? `\nSMOKE TEST PASSED (${FIXTURES.length} manifest fixtures + 8 scenarios)`
       : `\nSMOKE TEST FAILED: ${failures.length} check(s): ${failures.join("; ")}`,
   );
 } finally {

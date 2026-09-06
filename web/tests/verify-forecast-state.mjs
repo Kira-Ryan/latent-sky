@@ -29,7 +29,7 @@ const CASES = [
     manifest: "/data/web/daily/2026-09-02/manifest.json",
     label: "live daily run, not yet scored",
     expect: {
-      masthead: /^Forecast issued \d{2} \w{3,4} \d{4}, \d{2}:\d{2} UTC/,
+      masthead: /^Forecast initialised \d{2} \w{3,4} \d{4}, \d{2}:\d{2} UTC/,
       verification: /^Not yet scored\./,
       lead: /· \+10 h$/,
       frameZero: /· analysis$/,
@@ -42,7 +42,7 @@ const CASES = [
     manifest: "/data/web/dixie/manifest.json",
     label: "case study, scored against radar",
     expect: {
-      masthead: /^Forecast issued 14 Mar 2025, 18:00 UTC/,
+      masthead: /^Forecast initialised 14 Mar 2025, 18:00 UTC/,
       // The measured figure must be stated inline, and it must lead with the
       // limitation: a visitor who never opens the report should still learn that
       // the skill is mesoscale, not storm-scale.

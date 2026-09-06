@@ -53,7 +53,11 @@
     return () => clearInterval(id);
   });
   const issuedText = $derived(
-    sky.manifest?.run.init ? `Forecast issued ${formatUtc(sky.manifest.run.init)}` : "",
+    // "initialised", not "issued": run.init is the analysis time the model
+    // started from. The forecast reaches the site hours later, and nothing in
+    // the manifest records when. Saying "issued" claimed a publication time the
+    // data does not carry.
+    sky.manifest?.run.init ? `Forecast initialised ${formatUtc(sky.manifest.run.init)}` : "",
   );
   const issuedAge = $derived(ageLabel(sky.manifest?.run.init, nowMs));
 
@@ -70,7 +74,7 @@
     if (!globe) throw new Error("activate() before the globe was created");
     api = null;
     anchor = null;
-    await globe.load(manifest);
+    await globe.load(manifest, sky.variable);
     api = globe;
   }
 
@@ -367,7 +371,7 @@
          whole, and this quiet line says why there is no way down yet. -->
     {#if comingVisible}
       <p class="coming">
-        Global view: 0.5° reanalysis · kilometre-scale AI detail arrives with the first forecast run
+        Global view: 0.5° reanalysis · the forecasts in the menu carry kilometre-scale AI detail
       </p>
     {/if}
 

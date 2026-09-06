@@ -9,11 +9,17 @@
     const layer = sky.legendLayer;
     const target = canvas;
     if (!layer || !target) return;
+    // The LUT decode is asynchronous and the variable can change under it: a
+    // slow wind LUT resolving after the user switched to water vapour used to
+    // paint wind's ramp under water vapour's label. The teardown flag makes a
+    // superseded decode draw nothing, the same pattern App.svelte uses.
+    let cancelled = false;
     const image = new Image();
     image.src = layer.lutUrl;
     image
       .decode()
       .then(() => {
+        if (cancelled) return;
         const ctx = target.getContext("2d");
         if (!ctx) throw new Error("legend: no 2d context");
         ctx.imageSmoothingEnabled = false;
@@ -24,9 +30,13 @@
         ctx.drawImage(image, 0, 0, target.width, target.height);
       })
       .catch((err: unknown) => {
+        if (cancelled) return;
         console.error(`legend: failed to draw LUT ${layer.lutUrl}`, err);
         throw err;
       });
+    return () => {
+      cancelled = true;
+    };
   });
 
   const label = $derived(sky.legendLayer?.label ?? "");

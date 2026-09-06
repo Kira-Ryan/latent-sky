@@ -6,13 +6,14 @@
 
 NODE22 := /c/Users/User/AppData/Roaming/nvm/v22.21.1
 
-.PHONY: help luts encode-dev budget test-pipeline dev build smoke probes
+.PHONY: help luts encode-dev budget test-pipeline test-infra dev build smoke probes
 
 help:
 	@echo "luts           bake 256x1 LUT PNGs from ramps.yaml"
 	@echo "encode-dev     encode the local dev sample (data/dev/raw -> data/dev/encoded)"
 	@echo "budget         payload gate over data/dev/encoded"
 	@echo "test-pipeline  pytest for the encode pipeline"
+	@echo "test-infra     pytest for the daily Lambdas (launch, publish, check)"
 	@echo "dev            vite dev server (Node 22)"
 	@echo "build          vite production build (Node 22)"
 	@echo "smoke          headed-Chrome smoke test against the built app"
@@ -29,6 +30,9 @@ budget:
 
 test-pipeline:
 	cd pipeline && python -m pytest -q
+
+test-infra:
+	cd infra/daily && python -m pytest -q
 
 dev:
 	cd web && PATH="$(NODE22):$$PATH" npm run dev

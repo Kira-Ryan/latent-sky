@@ -1,0 +1,42 @@
+# The daily pipeline's Lambdas — Architecture.md §11.
+# These are the functions that spend money (one GPU pod a day), rewrite the live
+# catalogue and maintain the public verification record. Their tests are fast and
+# cloud-free, and until 6 Sep 2026 they ran only when someone remembered to run
+# them: no workflow path covered infra/**. deploy-daily.sh runs them too, because a
+# deploy from the working tree is what actually reaches production.
+name: infra
+
+on:
+  push:
+    paths:
+      - "infra/**"
+      - "pipeline/pod_daily.sh"
+      - ".github/workflows/infra.yml"
+  pull_request:
+    paths:
+      - "infra/**"
+      - "pipeline/pod_daily.sh"
+      - ".github/workflows/infra.yml"
+  workflow_dispatch:
+
+jobs:
+  lambdas:
+    name: Lambda tests (launch · publish · check)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: python -m pip install boto3 pytest
+
+      - name: pytest
+        working-directory: infra/daily
+        run: python -m pytest -q
+
+      - name: pod_daily.sh parses
+        run: bash -n pipeline/pod_daily.sh

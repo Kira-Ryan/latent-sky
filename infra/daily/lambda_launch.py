@@ -37,6 +37,7 @@ import urllib.request
 
 import boto3
 from botocore.config import Config
+from botocore.exceptions import ParamValidationError
 
 DATA_BUCKET = os.environ["DATA_BUCKET"]
 IMAGE = os.environ["IMAGE"]
@@ -124,6 +125,34 @@ def read_json(key: str) -> dict | None:
 
 def write_json(key: str, doc: dict) -> None:
     s3.put_object(Bucket=DATA_BUCKET, Key=key, Body=json.dumps(doc, indent=1).encode(), ContentType="application/json")
+
+
+def claim_day(key: str, claim: dict, force: bool) -> bool:
+    """Write the claim only if no claim exists. False means another invocation
+    won the race in the seconds between our read and our write.
+
+    S3 conditional writes (IfNoneMatch="*") make the claim a real create rather
+    than a read-then-write with a window, so "one pod a day" holds by
+    construction and not by the schedule happening never to overlap. A force
+    re-run overwrites deliberately. A runtime whose botocore predates
+    conditional writes falls back to the unconditional write and says so, which
+    is the behaviour this function replaced, never worse.
+    """
+    body = json.dumps(claim, indent=1).encode()
+    if force:
+        s3.put_object(Bucket=DATA_BUCKET, Key=key, Body=body, ContentType="application/json")
+        return True
+    try:
+        s3.put_object(Bucket=DATA_BUCKET, Key=key, Body=body, ContentType="application/json", IfNoneMatch="*")
+        return True
+    except s3.exceptions.ClientError as exc:
+        if exc.response["Error"]["Code"] in ("PreconditionFailed", "412"):
+            return False
+        raise
+    except ParamValidationError:
+        print("WARNING: this runtime's botocore predates S3 conditional writes; the claim is not atomic")
+        s3.put_object(Bucket=DATA_BUCKET, Key=key, Body=body, ContentType="application/json")
+        return True
 
 
 def runpod_key() -> str:
@@ -230,7 +259,9 @@ def handler(event, context):
         "max_pod_minutes": int(os.environ.get("MAX_POD_MINUTES", "45")),
         "claimed_at": dt.datetime.now(dt.timezone.utc).isoformat(),
     }
-    write_json(marker_key, claim)
+    if not claim_day(marker_key, claim, force):
+        print(f"{p['date']}: another invocation claimed the day between our read and our write")
+        return {"status": "already-claimed", "claim_state": "claiming", **p}
 
     env = {
         "RUN_DATE": p["date"],

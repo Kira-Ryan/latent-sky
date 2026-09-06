@@ -1,23 +1,38 @@
-# Encode determinism — Architecture.md §11.
-# pytest always. Then, once the one-shot GPU run has shipped its Zarr as a GitHub
-# Release asset, re-encode from it and diff against the committed data/web — making
-# the encoder's determinism a gate rather than a hope (LUT drift, range drift,
-# encoder-version drift). Until that Release exists the re-encode is skipped with a
-# clear message, so this job is green today by design.
+# Pipeline tests — Architecture.md §11.
+#
+# What this job is NOT, and why the previous version of it was removed on 6 Sep
+# 2026: the re-encode gate ("download the released Zarr, re-encode, git diff the
+# committed data/web") never ran. No GitHub Release has ever carried a Zarr, the
+# step it would have called (`make encode`) does not exist, and the daily runs
+# never enter git at all: the pod publishes straight to S3. Keeping the steps
+# made the workflow describe a gate the repository did not have.
+#
+# What does hold, and is tested here on every push: the pipeline suite, which
+# includes a two-clean-encodes sorted-inventory-and-bytes comparison for the
+# public tree (test_encode_public.py) and the identity guards that refuse to pair
+# a run with another run's stores or results (test_identity_guards.py).
 name: encode-determinism
 
 on:
   push:
     paths:
       - "pipeline/**"
-      - "data/web/**"
+      - "schema/**"
+      - "Makefile"
+      - ".github/workflows/encode-determinism.yml"
+  pull_request:
+    paths:
+      - "pipeline/**"
+      - "schema/**"
+      - "Makefile"
       - ".github/workflows/encode-determinism.yml"
   workflow_dispatch:
 
 jobs:
-  encode:
-    name: pytest · re-encode from released Zarr · diff data/web
+  pytest:
+    name: pipeline pytest
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -33,31 +48,3 @@ jobs:
       - name: pytest
         working-directory: pipeline
         run: python -m pytest -q
-
-      - name: Download released Zarr, if the GPU run has shipped
-        id: zarr
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p data/zarr
-          if gh release download --pattern "*.zarr*" --dir data/zarr 2>/dev/null \
-             && ls data/zarr/* >/dev/null 2>&1; then
-            for f in data/zarr/*.tar data/zarr/*.tar.gz data/zarr/*.tgz data/zarr/*.tar.zst; do
-              if [ -e "$f" ]; then tar -xaf "$f" -C data/zarr && rm "$f"; fi
-            done
-            echo "present=true" >> "$GITHUB_OUTPUT"
-            echo "Release Zarr downloaded:" && ls -la data/zarr
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "SKIP: no GitHub Release carries a Zarr asset yet — the one-shot GPU run"
-            echo "has not shipped. The re-encode determinism check will activate on the"
-            echo "first Release that attaches the *.zarr archive (Architecture.md §11)."
-          fi
-
-      - name: Re-encode from the released Zarr
-        if: steps.zarr.outputs.present == 'true'
-        run: make encode
-
-      - name: Determinism gate — committed data/web must be byte-identical
-        if: steps.zarr.outputs.present == 'true'
-        run: git diff --exit-code data/web

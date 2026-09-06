@@ -10,6 +10,12 @@ on:
       - "data/web/**"
       - "schema/**"
       - ".github/workflows/web.yml"
+  pull_request:
+    paths:
+      - "web/**"
+      - "data/web/**"
+      - "schema/**"
+      - ".github/workflows/web.yml"
   workflow_dispatch:
 
 jobs:

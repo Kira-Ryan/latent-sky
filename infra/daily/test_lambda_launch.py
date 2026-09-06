@@ -212,3 +212,43 @@ def test_the_claim_says_nothing_is_scored_when_nothing_is(env):
     ll.handler({"date": "2026-09-04"}, None)
     claim = json.loads(fake.objects["daily/2026-09-04/launched.json"])
     assert claim["scores_prev"] is False and claim["prev_date"] is None
+
+
+def test_two_firings_in_the_same_seconds_create_one_pod(env, monkeypatch):
+    """The claim is a conditional create. Both firings read 'no claim'; only the
+    first write lands, the second gets 412 and stands down. Before this the
+    second firing overwrote the marker and launched a second pod."""
+    fake, created = env
+    real_put = fake.put_object
+
+    def conditional(**kw):
+        if kw.get("IfNoneMatch") == "*" and kw["Key"] in fake.objects:
+            raise fake.exceptions.ClientError("PreconditionFailed")
+        kw.pop("IfNoneMatch", None)
+        return real_put(**kw)
+
+    monkeypatch.setattr(fake, "put_object", conditional)
+    monkeypatch.setattr(ll, "read_json", lambda key: None)   # both firings see no claim
+    first = ll.handler({"date": "2026-09-03"}, None)
+    second = ll.handler({"date": "2026-09-03"}, None)
+    assert first["status"] == "launched"
+    assert second["status"] == "already-claimed"
+    assert created == ["latentsky-daily-2026-09-03"], "the race produced a second pod"
+
+
+def test_an_old_runtime_falls_back_to_the_unconditional_claim(env, monkeypatch):
+    """A botocore without conditional writes must not turn every day into a
+    crash: it falls back to the read-then-write claim (the previous behaviour)
+    and says so."""
+    fake, created = env
+    real_put = fake.put_object
+
+    def old_botocore(**kw):
+        if "IfNoneMatch" in kw:
+            raise ll.ParamValidationError(report="Unknown parameter in input: IfNoneMatch")
+        return real_put(**kw)
+
+    monkeypatch.setattr(fake, "put_object", old_botocore)
+    assert ll.handler({"date": "2026-09-03"}, None)["status"] == "launched"
+    assert ll.handler({"date": "2026-09-03"}, None)["status"] == "already-claimed"
+    assert created == ["latentsky-daily-2026-09-03"]
