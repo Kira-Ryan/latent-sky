@@ -27,6 +27,7 @@ def rescore(results_path: pathlib.Path, manifest_path: pathlib.Path | None) -> d
     old = results.get("headline")
     new = verify.headline(results)
     results["headline"] = new
+    verify.comparators(results)   # re-attaches the baselines' figures when the file has them
     results_path.write_text(json.dumps(results, indent=1) + "\n", encoding="utf-8")
     print(f"{results_path}:\n  old {json.dumps(old)}\n  new {json.dumps(new)}")
     if manifest_path is not None:

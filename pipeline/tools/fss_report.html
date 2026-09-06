@@ -131,6 +131,19 @@
     <div class="legend" id="l-fss"></div>
   </figure>
 
+  <section id="base" hidden>
+    <h2>Better than what: the same hours against two baselines</h2>
+    <p>A score alone says how the forecast placed strong storms, not whether it placed them better than the alternatives. Two comparators are scored on the same grid, hours and thresholds: <strong>radar persistence</strong>, the analysis-time radar held for every lead, which is the forecast anyone can make with the information available at issue time; and <strong>HRRR</strong>, the operational convection-allowing model StormCast is initialised from, from the same cycle, when its archive file was available.</p>
+    <div class="tiles three" id="base-tiles"></div>
+    <figure>
+      <div class="title" id="base-title">FSS at 40 dBZ</div>
+      <div class="sub">StormCast, HRRR and persistence at the scale the headline names. The dashed line is the useful-skill level. Hover for values.</div>
+      <div class="chart" id="c-base"></div>
+      <div class="legend" id="l-base"></div>
+    </figure>
+    <p id="base-reading"></p>
+  </section>
+
   <h2>Coverage: how much storm, and when</h2>
   <p>Coverage is the fraction of the domain above a threshold. It says nothing about placement, which is exactly why it is useful next to FSS: it separates too much or too little from in the wrong place.</p>
   <div class="duo">
@@ -191,6 +204,7 @@
     <dt>Masking</dt><dd>MRMS <code>-999</code> (outside radar coverage) excluded; <code>-99</code> (coverage, no echo) counted as 0 dBZ. Forecast pixels outside the curvilinear footprint excluded. The sentinel meaning was established empirically: zero <code>-999</code> cells inside the domain, and the Gulf and Atlantic corners entirely <code>-999</code>.</dd>
     <dt>FSS</dt><dd>Roberts and Lean 2008. Binary exceedance at 20, 30 and 40 dBZ; square neighbourhoods of 1, 5, 11, 21 and 41 pixels (2, 12, 26, 50 and 98 km); FSS = 1 &minus; MSE(P<sub>f</sub>, P<sub>o</sub>) / (mean P<sub>f</sub><sup>2</sup> + mean P<sub>o</sub><sup>2</sup>) over valid cells. Cells outside the mask are zero in both fields before filtering, so the mask edge neither creates nor absorbs neighbourhood mass. Self-tested: FSS(f, f) = 1, FSS(f, 0) = 0, non-decreasing with scale.</dd>
     <dt>Headline</dt><dd>Rule <code>mean-v2</code>: over the scorable post-spin-up hours (FSS defined, radar over at least half the grid), the useful scale is the smallest neighbourhood at which the <em>mean</em> FSS reaches the mean useful line; the count of hours individually above the line is reported beside it. The full rules, and their history, are stated in <a href="/verification/protocol.html">the verification protocol</a>.</dd>
+    <dt>Comparators</dt><dd>Radar persistence (the MRMS analysis frame held for every lead) and, when its archive file was available, HRRR's composite reflectivity from the same cycle (NOAA's open archive, one GRIB message per lead by byte range, placed on the display grid by nearest cell like the forecast). Both are scored with exactly the scorer above and summarised under the same rule; the report compares them at the scale the headline names.</dd>
     <dt>Caveats</dt><dd><span id="m-cav">One diffusion sample, not an ensemble.</span> MRMS is radar-derived and quality-controlled, not absolute truth. Nearest-cell resampling of 1 km radar to 2.4 km keeps peaks but drops some texture. Zero-padding at the domain edge slightly deflates the largest neighbourhoods near the boundary.</dd>
   </dl></div>
 
@@ -425,6 +439,41 @@ lineChart("c-fss", {
   tip: r => `<div class="t">+${r.lead_h} h · ${utc(r)}</div>` + WIN.map((w, k) => `<div class="row"><span><i class="sw" style="background:${SEQ[k]}"></i>${Math.round(KM[w])} km</span><span>${fmt(r.fss["40"].by_window[w], 3)}</span></div>`).join("") + `<div class="row"><span>useful</span><span>${fmt(r.fss["40"].fss_useful, 3)}</span></div>`,
 });
 document.getElementById("l-fss").innerHTML = WIN.map((w, k) => `<span><i style="background:${SEQ[k]}"></i>${Math.round(KM[w])} km neighbourhood</span>`).join("") + `<span><i class="dash"></i>useful skill</span>`;
+
+// ── Baselines: persistence and HRRR on the same footing (results.baselines) ──
+const BASE = R.baselines || null;
+if (BASE) {
+  const comp = (R.headline && R.headline.comparators) || {};
+  const wI = u40.km == null ? KM.length - 1 : u40.w;         // the scale the headline names
+  const scaleKm = Math.round(KM[wI]);
+  const names = [["forecast", "StormCast", "var(--fc)"], ["hrrr", "HRRR, same cycle", "var(--obs)"], ["persistence", "Radar persistence", "var(--useful)"]]
+    .filter(([k]) => k === "forecast" || BASE[k]);
+  const leadsOf = (k) => k === "forecast" ? L : BASE[k].leads;
+  const meanAt = (k) => {
+    if (k === "forecast") return { mean: u40.mean, hours: u40.hours, n: u40.rows.length };
+    const c = comp[k]; return c ? { mean: c.meanFss, hours: c.usefulHours, n: c.scoredHours } : { mean: null, hours: 0, n: 0 };
+  };
+  const useful = u40.line;
+  document.getElementById("base-title").textContent = `FSS at 40 dBZ, ${scaleKm} km neighbourhood`;
+  document.getElementById("base-tiles").innerHTML = names.map(([k, label]) => {
+    const m = meanAt(k);
+    return `<div class="tile"><div class="k">${label}</div><div class="v">${m.mean == null ? "n/a" : fmt(m.mean, 2)}</div><div class="s">Mean FSS at ${scaleKm} km over ${m.n} scorable hours; ${m.hours} above the useful line${useful != null ? ` (${fmt(useful, 2)})` : ""}.</div></div>`;
+  }).join("");
+  lineChart("c-base", {
+    series: names.map(([k, label, color]) => ({ name: label, color, values: leadsOf(k).map(r => r.fss["40"].by_window[wI]) })),
+    yMax: 1, yTicks: [0, 0.25, 0.5, 0.75, 1], yFmt: v => v.toFixed(2),
+    baseline: { values: L.map(r => r.fss["40"].fss_useful), label: "useful" },
+    tip: r => { const i = L.indexOf(r); return `<div class="t">+${r.lead_h} h · ${utc(r)}</div>` + names.map(([k, label, color]) => `<div class="row"><span><i class="sw" style="background:${color}"></i>${label}</span><span>${fmt(leadsOf(k)[i].fss["40"].by_window[wI], 3)}</span></div>`).join(""); },
+  });
+  document.getElementById("l-base").innerHTML = names.map(([k, label, color]) => `<span><i style="background:${color}"></i>${label}</span>`).join("") + `<span><i class="dash"></i>useful skill</span>`;
+  const f = meanAt("forecast"), p = meanAt("persistence"), hr = BASE.hrrr ? meanAt("hrrr") : null;
+  const vs = (a, b) => a.mean == null || b.mean == null ? "cannot be compared" : a.mean > b.mean + 0.02 ? "ahead of" : a.mean < b.mean - 0.02 ? "behind" : "level with";
+  document.getElementById("base-reading").innerHTML =
+    `<strong>Against the baselines.</strong> At ${scaleKm} km the forecast's mean FSS is ${fmt(f.mean, 2)}, ${vs(f, p)} radar persistence at ${fmt(p.mean, 2)}` +
+    (hr ? `, and ${vs(f, hr)} HRRR's own forecast from the same cycle at ${fmt(hr.mean, 2)}. ` : `. HRRR's file for this cycle was not available when the run was scored. `) +
+    `Persistence is the floor: a forecast that cannot beat the radar it started from has added nothing beyond the analysis. HRRR is the bar that matters operationally: the model StormCast starts from, and the one a forecaster would otherwise look at.`;
+  document.getElementById("base").hidden = false;
+}
 
 function covChart(id, thr, yMax, ticks) {
   lineChart(id, {

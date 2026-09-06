@@ -57,9 +57,18 @@ Why the mean and not any single hour: version 1 named the smallest neighbourhood
 
 When a run has ensemble members, differing only in the diffusion sampler's seed, the probability of exceedance across members is scored with the probabilistic FSS on the same grid, thresholds and neighbourhoods, and the single deterministic run is scored alongside for contrast. Member agreement is sampler spread with the initial condition held fixed. It is not a calibrated probability and it cannot see an error the members share; no reliability claim is made until reliability has been measured.
 
+## Comparators
+
+A score alone says how the forecast placed strong storms, not whether it placed them better than the alternatives. Two comparators are scored with exactly the scorer above, on the same grid, hours and thresholds, and summarised under the same headline rule:
+
+- **Radar persistence.** The MRMS analysis frame, the radar at initialisation time, held unchanged for every lead. It is the forecast anyone can make with the information available at issue time, and it is the floor: a forecast that cannot beat it has added nothing beyond the analysis.
+- **HRRR.** NOAA's operational convection-allowing model, the one StormCast is initialised from and the one a forecaster would otherwise look at, from the same cycle. Its composite reflectivity is read from NOAA's open archive, one GRIB message per lead by byte range, and placed on the display grid by nearest cell like the forecast. When the archive file for a cycle is unavailable at scoring time the run is scored without it and the report says so; the run is never rescored later to add it silently.
+
+The report compares the three at the scale the headline names: the forecast's useful scale, or the largest tested when it is below the line. The globe states the two comparator means beside the forecast's. No comparator is ever used to decide the forecast's own verdict.
+
 ## What is not claimed
 
-No comparison against another forecast system is made yet, so a score says how the forecast placed strong storms, not whether it placed them better than the operational model would have. Radar persistence and the same-cycle HRRR forecast are the intended comparators and will appear here, under a new version, when they are scored.
+Persistence and HRRR are the only comparators. Nothing is claimed about any other model, and nothing is claimed about a comparator's skill beyond the hours and scales scored here.
 
 The daily run is initialised at 12 UTC and reaches the site around 16:15 UTC. Forecast hours two to four have therefore already happened by the time the run is public. They are scored like any other hour; a reader weighing the forecast as a prediction should discount them.
 
@@ -69,5 +78,5 @@ The run for a day is scored the next day, once the radar for its whole window ex
 
 ## Version history
 
-- **Version 2, from 7 September 2026.** The headline is the mean FSS over scorable hours against the mean useful line. Hours with undefined FSS or radar coverage under half the grid are excluded and reported. Results already published under version 1 were rescored under version 2 on 6 September 2026; their reports and manifests carry the version 2 figures and this note.
+- **Version 2, from 7 September 2026.** The headline is the mean FSS over scorable hours against the mean useful line. Hours with undefined FSS or radar coverage under half the grid are excluded and reported. Radar persistence and same-cycle HRRR are scored as comparators. Results already published under version 1 were rescored under version 2 on 6 September 2026; their reports and manifests carry the version 2 figures and this note, and the comparators were added to them at the same time from the archived radar and HRRR files.
 - **Version 1, 4 to 6 September 2026.** The headline was the smallest neighbourhood at which at least one post-spin-up hour cleared the useful line, with the count of such hours. It counted undefined hours as scored and had no coverage floor.

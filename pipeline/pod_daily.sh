@@ -174,8 +174,17 @@ PYEOF
       ln -sfn /prev/daily_m00_hero.zarr /prev/daily_hero.zarr   # encode_stormcast needs the sibling
     fi
     uv run python pipeline/tools/fetch_mrms.py --event-config "$CFG" --init "$PREV_INIT" --out /prev/mrms.npz
+    # The operational comparator. Its absence must not cost the run its own
+    # score: an archive hiccup makes the report say HRRR was unavailable, and
+    # persistence (computed from the MRMS analysis frame) is always scored.
+    HRRR_ARG=""
+    if uv run python pipeline/tools/fetch_hrrr_refc.py --event-config "$CFG" --init "$PREV_INIT" --out /prev/hrrr.npz; then
+      HRRR_ARG="--hrrr /prev/hrrr.npz"
+    else
+      echo "HRRR baseline unavailable for $PREV_DATE; scoring without it"
+    fi
     uv run python pipeline/tools/verify_fss.py --hero-zarr "$HERO" $(member_args /prev "$PM") $SAME_AS_M00 \
-      --mrms /prev/mrms.npz --out /prev/fss.json --event-id "$PREV_EVENT_ID" \
+      --mrms /prev/mrms.npz $HRRR_ARG --out /prev/fss.json --event-id "$PREV_EVENT_ID" \
       --live-url "https://latent-sky.dev/?event=$PREV_EVENT_ID"
     uv run python pipeline/tools/fss_report.py --results /prev/fss.json --out /prev/report-fragment.html \
       --site-out "/prev/daily-$PREV_DATE.html"

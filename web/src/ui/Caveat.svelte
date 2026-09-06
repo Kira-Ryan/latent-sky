@@ -23,6 +23,15 @@
     const dbz = `${s.thresholdDbz} dBZ`;
     const largest = `${Math.round(s.largestScaleKm)} km`;
     const hours = `${s.usefulHours} of ${s.scoredHours} hours`;
+    // The comparison that changes how an expert reads the figure: the same
+    // hours, the same scale, against the radar held still and against HRRR.
+    const c = s.comparators;
+    const against = c
+      ? [c.hrrr && c.hrrr.meanFss != null ? `HRRR's own forecast ${c.hrrr.meanFss.toFixed(2)}` : "",
+         c.persistence && c.persistence.meanFss != null ? `radar persistence ${c.persistence.meanFss.toFixed(2)}` : ""]
+          .filter(Boolean).join(", ")
+      : "";
+    const vs = against ? ` At the same scale: ${against}.` : "";
     // Rule "mean-v2": the aggregate is the claim, the hour count is the detail.
     // The words "useful skill" appear only when the MEAN reaches the line.
     if (s.status === "no-echo") {
@@ -33,14 +42,14 @@
       const figure = s.meanFss != null && s.usefulLine != null
         ? ` (mean FSS ${s.meanFss.toFixed(2)} at ${largest} against a line of ${s.usefulLine.toFixed(2)})`
         : "";
-      return `Below the useful line at ${dbz} at every scale up to ${largest}${figure}, ${detail}.`;
+      return `Below the useful line at ${dbz} at every scale up to ${largest}${figure}, ${detail}.${vs}`;
     }
     if (s.status === "useful" && s.usefulScaleKm !== null) {
       const km = Math.round(s.usefulScaleKm);
       const where = km === Math.round(s.largestScaleKm)
         ? `only at the coarsest scale tested, ${largest}`
         : `from ${km} km neighbourhoods`;
-      return `Useful skill at ${dbz} ${where}, ${hours} above the line.`;
+      return `Useful skill at ${dbz} ${where}, ${hours} above the line.${vs}`;
     }
     // Results scored under the first rule (any single hour above the line):
     // say exactly what that rule measured, and no more.

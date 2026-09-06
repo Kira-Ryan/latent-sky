@@ -171,6 +171,50 @@
             "rule": {
               "type": "string",
               "description": "Identifier of the headline rule that produced these figures, e.g. mean-v2; DOCS/Verification-Protocol.md."
+            },
+            "comparators": {
+              "type": "object",
+              "description": "Baselines scored on the same grid, hours and thresholds, at the scale the headline names (DOCS/Verification-Protocol.md, Comparators). Keys are persistence and, when its archive file was available, hrrr.",
+              "additionalProperties": {
+                "type": "object",
+                "required": [
+                  "meanFss",
+                  "scaleKm"
+                ],
+                "properties": {
+                  "scaleKm": {
+                    "type": "number"
+                  },
+                  "meanFss": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "usefulHours": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "scoredHours": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "useful",
+                      "below-line",
+                      "no-echo"
+                    ]
+                  },
+                  "usefulScaleKm": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                }
+              }
             }
           }
         }

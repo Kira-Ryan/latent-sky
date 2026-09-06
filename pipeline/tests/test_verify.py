@@ -175,3 +175,54 @@ def test_the_hour_count_is_reported_at_the_useful_scale():
     h = verify.headline(_results(rows))
     # mean at 12 km = (0.6*3 + 0.4)/4 = 0.55 >= 0.5 -> useful from 12 km, 3 of 4 hours above the line there
     assert h["usefulScaleKm"] == 12.0 and h["usefulHours"] == 3 and h["scoredHours"] == 4
+
+
+# ── comparators (DOCS/Verification-Protocol.md, Comparators) ──────────────────
+
+def test_comparators_are_taken_at_the_scale_the_headline_names():
+    """The forecast is below the line, so the headline names 98 km; persistence
+    and HRRR are summarised at that same scale over their own scorable hours."""
+    fc = _results([[0.0] * 5] * 2 + [[0.1, 0.2, 0.3, 0.4, 0.45]] * 4)
+    fc["baselines"] = {
+        "persistence": _results([[0.0] * 5] * 2 + [[0.05, 0.1, 0.15, 0.2, 0.3]] * 4),
+        "hrrr": _results([[0.0] * 5] * 2 + [[0.1, 0.3, 0.5, 0.6, 0.7]] * 4),
+    }
+    fc["headline"] = verify.headline(fc)
+    comps = verify.comparators(fc)
+    assert set(comps) == {"persistence", "hrrr"}
+    assert comps["persistence"]["scaleKm"] == 98.2 and comps["persistence"]["meanFss"] == pytest.approx(0.3)
+    assert comps["hrrr"]["meanFss"] == pytest.approx(0.7) and comps["hrrr"]["status"] == "useful"
+    assert comps["hrrr"]["usefulScaleKm"] == 26.3, "each baseline also gets its own verdict under the same rule"
+    assert fc["headline"]["comparators"] is comps
+    assert fc["baselines"]["hrrr"]["headline"]["status"] == "useful"
+
+
+def test_comparators_follow_a_useful_forecast_to_its_own_scale():
+    fc = _results([[0.0] * 5] * 2 + [[0.1, 0.6, 0.9, 0.9, 0.9]] * 4)    # useful from 12 km
+    fc["baselines"] = {"persistence": _results([[0.0] * 5] * 2 + [[0.1, 0.2, 0.9, 0.9, 0.9]] * 4)}
+    fc["headline"] = verify.headline(fc)
+    comps = verify.comparators(fc)
+    assert comps["persistence"]["scaleKm"] == 12.0 and comps["persistence"]["meanFss"] == pytest.approx(0.2)
+
+
+def test_no_baselines_means_no_comparators_and_an_untouched_headline():
+    fc = _results([[0.1] * 5] * 5)
+    fc["headline"] = verify.headline(fc)
+    assert verify.comparators(fc) == {} and "comparators" not in fc["headline"]
+
+
+def test_persistence_scores_the_analysis_radar_held_still(storm):
+    """On a grid built from a synthetic domain, holding the analysis frame for
+    every lead is a real forecast field: perfect against an unchanging radar,
+    and worse than the truth once the storm moves."""
+    from latentsky import regrid
+    f, v = storm
+    lat = np.linspace(45.0, 31.0, 60)[:, None].repeat(80, axis=1)
+    lon = np.linspace(-110.0, -85.0, 80)[None, :].repeat(60, axis=0)
+    grid = regrid.target_from_bbox(lat, lon)
+    idx = regrid.build_index(lat, lon, grid)
+    obs = np.stack([idx.apply(f), idx.apply(np.roll(f, 12, axis=1)), idx.apply(np.roll(f, 24, axis=1))])
+    persistence = np.repeat(obs[:1], 3, axis=0)
+    r = verify.score(persistence, obs, ["t0", "t1", "t2"], grid)
+    assert r["leads"][0]["fss"]["40"]["by_window"][0] == pytest.approx(1.0)
+    assert r["leads"][2]["fss"]["40"]["by_window"][0] < 0.2, "a moved storm must not score at the gridpoint"

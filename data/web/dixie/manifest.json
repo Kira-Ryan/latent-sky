@@ -15,7 +15,25 @@
       "usefulScaleKm": null,
       "usefulHours": 7,
       "meanFss": 0.433,
-      "usefulLine": 0.503
+      "usefulLine": 0.503,
+      "comparators": {
+        "persistence": {
+          "scaleKm": 98.2,
+          "meanFss": 0.007,
+          "usefulHours": 0,
+          "scoredHours": 17,
+          "status": "below-line",
+          "usefulScaleKm": null
+        },
+        "hrrr": {
+          "scaleKm": 98.2,
+          "meanFss": 0.39,
+          "usefulHours": 2,
+          "scoredHours": 17,
+          "status": "below-line",
+          "usefulScaleKm": null
+        }
+      }
     },
     "model": {
       "prognostic": "NVIDIA StormCast v1, 3 km convection-allowing over the central US (Apache-2.0 checkpoint), initialised from HRRR",

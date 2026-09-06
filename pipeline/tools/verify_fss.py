@@ -49,6 +49,9 @@ def main(argv: list[str] | None = None) -> None:
                     help="the --hero-zarr store IS member K, not a separate execution. Suppresses "
                          "the reproducibility comparison, which would otherwise compare a store "
                          "with itself and report a perfect match as if it meant something")
+    ap.add_argument("--hrrr", type=pathlib.Path, default=None,
+                    help="HRRR composite reflectivity for the same cycle (fetch_hrrr_refc npz): scored "
+                         "as the operational comparator on the same grid, hours and thresholds")
     args = ap.parse_args(argv)
 
     hero = zarr.open(str(args.hero_zarr), mode="r")
@@ -104,11 +107,30 @@ def main(argv: list[str] | None = None) -> None:
         print(f"ensemble: {members.shape[0]} members, seeds {member_seeds}")
 
     results = verify.score(fc, obs, fc_times, grid, members=members)
+
+    # Better than what? Two comparators on the same grid, hours and thresholds
+    # (DOCS/Verification-Protocol.md, Comparators). Radar persistence holds the
+    # analysis-time radar for every lead: the forecast anyone can make with the
+    # information available at issue time. HRRR is the operational model
+    # StormCast starts from, scored from the same cycle when its file is given.
+    persistence = np.repeat(obs[:1], obs.shape[0], axis=0)
+    results["baselines"] = {"persistence": verify.score(persistence, obs, fc_times, grid)}
+    if args.hrrr is not None:
+        hr, hr_times = verify.hrrr_on_grid(args.hrrr, grid)
+        if hr_times != fc_times:
+            raise SystemExit(f"HRRR frames do not match forecast frames: {hr_times[:2]} vs {fc_times[:2]}")
+        print(f"hrrr {hr.shape}; footprint {np.isfinite(hr[0]).mean()*100:.1f}% of rect")
+        results["baselines"]["hrrr"] = verify.score(hr, obs, fc_times, grid)
+
     # The single figure the site shows without anyone opening the report.
     results["headline"] = verify.headline(results)
+    comps = verify.comparators(results)
     h = results["headline"]
-    print(f"headline: useful skill at {h['usefulScaleKm'] or 'no'} km for {h['usefulHours']} of "
-          f"{h['scoredHours']} scored hours at {h['thresholdDbz']} dBZ")
+    print(f"headline ({h['rule']}): {h['status']}, useful scale {h['usefulScaleKm'] or 'none'} km, "
+          f"mean FSS {h['meanFss']} vs line {h['usefulLine']}, {h['usefulHours']} of {h['scoredHours']} h above it")
+    for name, c in comps.items():
+        print(f"  vs {name:11}: mean FSS {c['meanFss']} at {c['scaleKm']} km, {c['usefulHours']} of {c['scoredHours']} h "
+              f"above the line, {c['status']}")
     results["member_seeds"] = member_seeds
     results["single_run_seed"] = hero.attrs.get("seed")
     from datetime import datetime, timezone

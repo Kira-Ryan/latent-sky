@@ -62,6 +62,8 @@ export interface RunInfo {
     meanFss?: number | null;
     usefulLine?: number | null;
     rule?: string;
+    /** Baselines at the scale the headline names: radar persistence and HRRR. */
+    comparators?: Record<string, { meanFss: number | null; scaleKm: number }>;
   };
 }
 
@@ -205,6 +207,17 @@ function parseVerificationSummary(raw: unknown): RunInfo["verificationSummary"] 
   if (s.meanFss === null || num(s.meanFss) !== undefined) out.meanFss = s.meanFss === null ? null : num(s.meanFss);
   if (s.usefulLine === null || num(s.usefulLine) !== undefined) out.usefulLine = s.usefulLine === null ? null : num(s.usefulLine);
   if (typeof s.rule === "string") out.rule = s.rule;
+  if (typeof s.comparators === "object" && s.comparators !== null) {
+    const comps: NonNullable<typeof out.comparators> = {};
+    for (const [name, c] of Object.entries(s.comparators as Record<string, unknown>)) {
+      if (typeof c !== "object" || c === null) continue;
+      const cc = c as Record<string, unknown>;
+      const scaleKm = num(cc.scaleKm);
+      if (scaleKm === undefined) continue;
+      comps[name] = { meanFss: cc.meanFss === null ? null : (num(cc.meanFss) ?? null), scaleKm };
+    }
+    if (Object.keys(comps).length) out.comparators = comps;
+  }
   return out;
 }
 

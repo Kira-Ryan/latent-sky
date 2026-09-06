@@ -230,3 +230,7 @@ def test_the_scorer_accepts_matching_members(tmp_path):
     b = write_hero(tmp_path / "m02_hero.zarr", SEP, [0, 1, 2, 3], seed=2)
     r = _score(tmp_path, [a, b])
     assert r["members"] == 2 and r["member_seeds"] == [1, 2] and r["init"] == SEP_ISO
+    # The call site of the comparators (rule 9): the CLI must score persistence
+    # from the analysis radar and carry it into the headline it publishes.
+    assert r["baselines"]["persistence"]["headline"]["rule"] == r["headline"]["rule"]
+    assert r["headline"]["comparators"]["persistence"]["scaleKm"] > 0

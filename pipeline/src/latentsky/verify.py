@@ -204,13 +204,8 @@ def headline(results: dict, threshold: float = 40.0, spin_up_leads: int = 2) -> 
     """
     key = str(int(threshold))
     windows = results["windows_km"]
-    ncell = int(results["grid"]["size"][0]) * int(results["grid"]["size"][1])
     post = [r for r in results["leads"] if r["lead_h"] >= spin_up_leads]
-    scorable = [
-        r for r in post
-        if r["valid_cells"] / ncell >= COVERAGE_FLOOR
-        and all(_defined(v) for v in r["fss"][key]["by_window"])
-    ]
+    scorable = _scorable(results, key, spin_up_leads)
     base = {
         "rule": HEADLINE_RULE,
         "thresholdDbz": int(threshold),
@@ -222,21 +217,85 @@ def headline(results: dict, threshold: float = 40.0, spin_up_leads: int = 2) -> 
         return {**base, "status": "no-echo", "usefulScaleKm": None, "usefulHours": 0,
                 "meanFss": None, "usefulLine": None}
 
-    line = float(np.mean([r["fss"][key]["fss_useful"] for r in scorable]))
-
-    def at(i: int) -> tuple[float, int]:
-        vals = [r["fss"][key]["by_window"][i] for r in scorable]
-        hours = sum(1 for r in scorable if r["fss"][key]["by_window"][i] >= r["fss"][key]["fss_useful"])
-        return float(np.mean(vals)), hours
-
+    line = _useful_line(scorable, key)
     for i, km in enumerate(windows):
-        mean, hours = at(i)
+        mean, hours = _at(scorable, key, i)
         if mean >= line:
             return {**base, "status": "useful", "usefulScaleKm": round(km, 1), "usefulHours": hours,
                     "meanFss": round(mean, 3), "usefulLine": round(line, 3)}
-    mean, hours = at(len(windows) - 1)
+    mean, hours = _at(scorable, key, len(windows) - 1)
     return {**base, "status": "below-line", "usefulScaleKm": None, "usefulHours": hours,
             "meanFss": round(mean, 3), "usefulLine": round(line, 3)}
+
+
+def _scorable(results: dict, key: str, spin_up_leads: int) -> list[dict]:
+    ncell = int(results["grid"]["size"][0]) * int(results["grid"]["size"][1])
+    return [
+        r for r in results["leads"]
+        if r["lead_h"] >= spin_up_leads
+        and r["valid_cells"] / ncell >= COVERAGE_FLOOR
+        and all(_defined(v) for v in r["fss"][key]["by_window"])
+    ]
+
+
+def _useful_line(rows: list[dict], key: str) -> float:
+    return float(np.mean([r["fss"][key]["fss_useful"] for r in rows]))
+
+
+def _at(rows: list[dict], key: str, i: int) -> tuple[float, int]:
+    """(mean FSS, hours individually above the line) at window index i."""
+    vals = [r["fss"][key]["by_window"][i] for r in rows]
+    hours = sum(1 for r in rows if r["fss"][key]["by_window"][i] >= r["fss"][key]["fss_useful"])
+    return float(np.mean(vals)), hours
+
+
+def comparators(results: dict, threshold: float = 40.0, spin_up_leads: int = 2) -> dict:
+    """Attach the baselines' figures at the forecast's headline scale.
+
+    Each entry of results["baselines"] (persistence, hrrr) is a score() dict of
+    its own. Every one is summarised under the same rule as the forecast, and
+    its mean FSS is also taken at the SCALE THE FORECAST'S HEADLINE NAMES (the
+    useful scale, or the largest tested when below the line), over that
+    baseline's own scorable hours, so "the forecast scored 0.43 here; HRRR 0.41;
+    persistence 0.30" is one comparison at one scale. Writes
+    results["headline"]["comparators"] and returns it; nothing when there are
+    no baselines, so older results files are untouched.
+    """
+    baselines = results.get("baselines") or {}
+    if not baselines:
+        return {}
+    head = results["headline"]
+    windows = results["windows_km"]
+    scale_km = head["usefulScaleKm"] if head["usefulScaleKm"] is not None else windows[-1]
+    i = min(range(len(windows)), key=lambda k: abs(windows[k] - scale_km))
+    key = str(int(threshold))
+    out = {}
+    for name, b in baselines.items():
+        own = headline(b, threshold, spin_up_leads)
+        rows = _scorable(b, key, spin_up_leads)
+        mean, hours = _at(rows, key, i) if rows else (None, 0)
+        out[name] = {
+            "scaleKm": round(windows[i], 1),
+            "meanFss": None if mean is None else round(mean, 3),
+            "usefulHours": hours,
+            "scoredHours": len(rows),
+            "status": own["status"],
+            "usefulScaleKm": own["usefulScaleKm"],
+        }
+        b["headline"] = own
+    head["comparators"] = out
+    return out
+
+
+def hrrr_on_grid(npz_path: pathlib.Path, grid) -> tuple[np.ndarray, list[str]]:
+    """HRRR composite reflectivity frames (from fetch_hrrr_refc) on `grid` by
+    nearest cell, NaN outside the crop and where the archive had no value."""
+    m = np.load(npz_path)
+    idx = regrid.build_index(m["lat"].astype(np.float64), to_180(m["lon"].astype(np.float64)), grid)
+    raw = m["refc_half_dbz"].astype(np.float32) / 2.0
+    raw[raw <= -900.0] = np.nan
+    frames = np.stack([idx.apply(raw[i]) for i in range(raw.shape[0])]).astype(np.float32)
+    return frames, [str(v) for v in m["valid"]]
 
 
 def score(

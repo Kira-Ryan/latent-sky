@@ -110,13 +110,18 @@ const summarise = (h) => {
   const largest = Math.round(h.largestScaleKm);
   // Rule "mean-v2": the aggregate is the claim; the hour count is the detail.
   if (h.status === "no-echo") return `No echo at ${h.thresholdDbz} dBZ; nothing to score`;
+  const c = h.comparators || {};
+  const vs = [c.hrrr && c.hrrr.meanFss != null ? `HRRR ${c.hrrr.meanFss.toFixed(2)}` : "",
+              c.persistence && c.persistence.meanFss != null ? `persistence ${c.persistence.meanFss.toFixed(2)}` : ""]
+    .filter(Boolean).join(", ");
+  const against = vs ? ` &middot; vs ${vs}` : "";
   if (h.status === "below-line") {
     const fig = h.meanFss != null && h.usefulLine != null ? ` (mean FSS ${h.meanFss.toFixed(2)} vs ${h.usefulLine.toFixed(2)} at ${largest} km)` : "";
-    return `Below the useful line at every scale to ${largest} km${fig}; ${h.usefulHours} of ${h.scoredHours} h above it at ${largest} km`;
+    return `Below the useful line at every scale to ${largest} km${fig}; ${h.usefulHours} of ${h.scoredHours} h above it at ${largest} km${against}`;
   }
   if (h.status === "useful" && h.usefulScaleKm != null) {
     const km = Math.round(h.usefulScaleKm);
-    return `Useful from ${km} km${km === largest ? " (the coarsest scale tested)" : ""}, ${h.usefulHours} of ${h.scoredHours} h &middot; ${h.thresholdDbz} dBZ`;
+    return `Useful from ${km} km${km === largest ? " (the coarsest scale tested)" : ""}, ${h.usefulHours} of ${h.scoredHours} h &middot; ${h.thresholdDbz} dBZ${against}`;
   }
   // First-rule results (any single hour above the line): say only that.
   if (h.usefulScaleKm === null || h.usefulScaleKm === undefined) {
