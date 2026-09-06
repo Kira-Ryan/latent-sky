@@ -541,8 +541,10 @@ html = page.read_text(encoding="utf-8")
 if "static.cloudflareinsights.com/beacon.min.js" in html:
     print("analytics beacon: already present in dist/index.html (deploy re-run without a rebuild)")
     sys.exit(0)
+# type="module" is what Cloudflare's own snippet uses (6 Sep 2026); module scripts
+# are deferred by default, so the page paints before the beacon is even fetched.
 tag = ('    <!-- Cloudflare Web Analytics: cookieless page-view beacon; injected by deploy-site.sh -->\n'
-       '    <script defer src="https://static.cloudflareinsights.com/beacon.min.js" '
+       '    <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" '
        f'data-cf-beacon=\'{{"token": "{token}"}}\'></script>\n')
 assert html.count("</head>") == 1, "dist/index.html must have exactly one </head>"
 page.write_text(html.replace("</head>", tag + "  </head>"), encoding="utf-8")
