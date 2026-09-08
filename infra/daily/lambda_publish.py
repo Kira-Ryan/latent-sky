@@ -50,6 +50,9 @@ REGION = os.environ.get("AWS_REGION", "us-east-1")
 
 IMMUTABLE = "public, max-age=31536000, immutable"
 NOCACHE = "no-cache"
+# Cloudflare, which fronts RunPod, refuses Python's default agent with a 1010
+# (6 Sep 2026). An unnamed request here would fail to stop a pod that is billing.
+USER_AGENT = "latentsky-daily/1.0 (+https://latent-sky.dev)"
 CONTENT_TYPES = {".webp": "image/webp", ".png": "image/png", ".json": "application/json", ".html": "text/html"}
 KEY_RE = re.compile(
     r"^daily/(?P<date>\d{4}-\d{2}-\d{2})/"
@@ -298,8 +301,10 @@ def terminate_pod(date: str) -> str:
         return "no pod id in the launch marker; the reaper will catch it by name"
     time.sleep(20)  # let the pod's exit trap ship its final log
     key = ssm.get_parameter(Name=RUNPOD_KEY_PARAM, WithDecryption=True)["Parameter"]["Value"]
+    # Named, because Cloudflare (which fronts RunPod) refuses Python's default
+    # agent with a 1010; an unnamed DELETE here would leave a pod billing.
     req = urllib.request.Request(f"https://rest.runpod.io/v1/pods/{pod_id}", method="DELETE",
-                                 headers={"Authorization": f"Bearer {key}"})
+                                 headers={"Authorization": f"Bearer {key}", "User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return f"terminated pod {pod_id} (HTTP {resp.status})"

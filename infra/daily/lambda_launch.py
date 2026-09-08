@@ -32,6 +32,7 @@ import base64
 import datetime as dt
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 
@@ -52,6 +53,24 @@ EXPIRY = 6 * 3600
 HRRR_BUCKET = "https://noaa-hrrr-bdp-pds.s3.amazonaws.com"
 GFS_BUCKET = "https://noaa-gfs-bdp-pds.s3.amazonaws.com"
 RUNPOD_API = "https://rest.runpod.io/v1/pods"
+
+# EVERY outbound request names itself. RunPod sits behind Cloudflare, which began
+# refusing Python's default "Python-urllib/3.12" with a 1010 (banned client
+# signature) on 6 Sep 2026: pod creation and the reaper's poll both got a bare
+# 403 and the daily run stopped for two days. Nothing about the key, the account
+# or the balance had changed. A named client is also the courteous thing to send
+# to NOAA's buckets, which is why url_exists carries it too.
+USER_AGENT = "latentsky-daily/1.0 (+https://latent-sky.dev)"
+
+
+def http_detail(exc: urllib.error.HTTPError) -> str:
+    """The status AND what the server said. The body is where the answer lives:
+    "403 Forbidden" alone cost two days, while the body read "error code: 1010"."""
+    try:
+        body = exc.read()[:300].decode("utf-8", "replace").strip().replace("\n", " ")
+    except Exception:  # noqa: BLE001 - a body we cannot read must not mask the status
+        body = ""
+    return f"HTTP {exc.code} {exc.reason}" + (f" — {body}" if body else "")
 
 s3 = boto3.client("s3", region_name=REGION, config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}))
 ssm = boto3.client("ssm", region_name=REGION)
@@ -79,8 +98,12 @@ def url_exists(url: str) -> bool:
 
     A transport error is NOT "not ready" — it propagates, so a network problem
     reads as a failed check rather than a quietly skipped day.
+
+    The named agent matters here too: a 403 is read as "absent", so an edge that
+    refused this client would make every input look missing and skip the day for
+    ever, silently. That is exactly what Cloudflare did to RunPod on 6 Sep 2026.
     """
-    req = urllib.request.Request(url, method="HEAD")
+    req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             return resp.status == 200
@@ -180,14 +203,33 @@ def create_pod(env: dict, name: str) -> dict:
         "volumeInGb": 0,
         "env": env,
     }
-    req = urllib.request.Request(
-        RUNPOD_API,
-        data=json.dumps(body).encode(),
-        method="POST",
-        headers={"Authorization": f"Bearer {runpod_key()}", "Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return json.load(resp)
+    data = json.dumps(body).encode()
+    key = runpod_key()
+    last = None
+    for attempt in (1, 2, 3):
+        req = urllib.request.Request(
+            RUNPOD_API,
+            data=data,
+            method="POST",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
+                     "User-Agent": USER_AGENT},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                return json.load(resp)
+        except urllib.error.HTTPError as exc:
+            # A RESPONSE CAME BACK, so the request was rejected and no pod was
+            # created: retrying cannot spend twice. This is the one failure that
+            # is safe to retry, and it is the one that took the day out on 7 and
+            # 8 Sep 2026 — a single edge 403 killed the whole day.
+            last = RuntimeError(f"RunPod refused the create ({http_detail(exc)})")
+            print(f"create attempt {attempt}/3: {last}")
+            if attempt < 3:
+                time.sleep(2 * attempt)
+        # Everything else — a timeout, a reset, a DNS failure — may have created
+        # a pod we never heard about. Those propagate on the first try and the
+        # day stays claimed, because spending twice is worse than missing a day.
+    raise last
 
 
 def plan(now: dt.datetime) -> dict:

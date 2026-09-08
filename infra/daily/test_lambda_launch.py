@@ -252,3 +252,99 @@ def test_an_old_runtime_falls_back_to_the_unconditional_claim(env, monkeypatch):
     assert ll.handler({"date": "2026-09-03"}, None)["status"] == "launched"
     assert ll.handler({"date": "2026-09-03"}, None)["status"] == "already-claimed"
     assert created == ["latentsky-daily-2026-09-03"]
+
+
+# ── the 6-8 Sep 2026 outage: Cloudflare 1010 on Python's default agent ────────
+#
+# These exercise the REAL create_pod and url_exists, so they must NOT take the
+# `env` fixture, which stubs both out.
+
+@pytest.fixture
+def key(monkeypatch):
+    monkeypatch.setattr(ll, "ssm", type("S", (), {"get_parameter": lambda self, **kw: {"Parameter": {"Value": "k"}}})())
+    monkeypatch.setattr(ll.time, "sleep", lambda s: None)
+
+
+class _Resp:
+    status = 200
+
+    def __init__(self, body=b'{"id": "pod-1", "costPerHr": 2.09}'):
+        self._body = body
+
+    def read(self):
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def _http_error(code=403, body=b"error code: 1010"):
+    import io
+    return ll.urllib.error.HTTPError("https://rest.runpod.io/v1/pods", code, "Forbidden", {}, io.BytesIO(body))
+
+
+def test_every_runpod_request_names_itself(key, monkeypatch):
+    """The regression test for two lost days. RunPod sits behind Cloudflare,
+    which refuses "Python-urllib/3.x" with a 1010; an unnamed request gets a
+    bare 403 and the day dies. NOAA's HEAD checks are named for the same reason:
+    there, a 403 is read as "absent" and would skip the day silently for ever."""
+    seen = []
+    monkeypatch.setattr(ll.urllib.request, "urlopen", lambda req, timeout=None: seen.append(dict(req.headers)) or _Resp())
+    ll.create_pod({"RUN_DATE": "2026-09-08"}, "latentsky-daily-2026-09-08")
+    ll.url_exists("https://noaa-hrrr-bdp-pds.s3.amazonaws.com/x.idx")
+    assert len(seen) == 2, "both calls must be made"
+    for headers in seen:
+        ua = headers.get("User-agent") or headers.get("User-Agent") or ""
+        assert ua and "urllib" not in ua.lower(), f"unnamed client: {headers}"
+
+
+def test_a_rejected_create_is_retried_because_no_pod_was_made(key, monkeypatch):
+    """A response came back, so the request was refused and nothing was created:
+    retrying cannot spend twice. A single edge 403 must not cost the day."""
+    calls = []
+
+    def flaky(req, timeout=None):
+        calls.append(1)
+        if len(calls) < 3:
+            raise _http_error()
+        return _Resp()
+
+    monkeypatch.setattr(ll.urllib.request, "urlopen", flaky)
+    assert ll.create_pod({}, "latentsky-daily-2026-09-08")["id"] == "pod-1"
+    assert len(calls) == 3
+
+
+def test_a_create_timeout_is_never_retried(key, monkeypatch):
+    """A timeout may have created a pod we never heard about. Fail closed: one
+    attempt, then propagate, and the day stays claimed."""
+    calls = []
+
+    def times_out(req, timeout=None):
+        calls.append(1)
+        raise TimeoutError("socket timeout")
+
+    monkeypatch.setattr(ll.urllib.request, "urlopen", times_out)
+    with pytest.raises(TimeoutError):
+        ll.create_pod({}, "latentsky-daily-2026-09-08")
+    assert len(calls) == 1, "a possibly-created pod must never be retried"
+
+
+def test_what_the_server_said_reaches_the_alert(key, monkeypatch):
+    """"403 Forbidden" alone cost two days; "error code: 1010" is the answer."""
+    monkeypatch.setattr(ll.urllib.request, "urlopen", lambda req, timeout=None: (_ for _ in ()).throw(_http_error()))
+    with pytest.raises(RuntimeError, match="1010"):
+        ll.create_pod({}, "latentsky-daily-2026-09-08")
+
+
+def test_a_refused_create_still_leaves_the_day_claimed(env, monkeypatch):
+    fake, created = env
+    monkeypatch.setattr(ll, "create_pod", lambda e, n: (_ for _ in ()).throw(
+        RuntimeError("RunPod refused the create (HTTP 403 Forbidden — error code: 1010)")))
+    with pytest.raises(RuntimeError):
+        ll.handler({"date": "2026-09-08"}, None)
+    import json
+    claim = json.loads(fake.objects["daily/2026-09-08/launched.json"])
+    assert claim["state"] == "launch-failed" and "1010" in claim["error"]

@@ -72,15 +72,34 @@ def log_tail(date: str, lines: int = 14) -> str:
     return "\n".join(keep[-lines:])
 
 
+# Every outbound request names itself. Cloudflare, which fronts RunPod, began
+# refusing Python's default "Python-urllib/3.12" with a 1010 on 6 Sep 2026, so
+# this poll returned a bare 403 every fifteen minutes for two days while
+# reporting the day clean. See the handler's reaped flag.
+USER_AGENT = "latentsky-daily/1.0 (+https://latent-sky.dev)"
+
+
+def http_detail(exc: urllib.error.HTTPError) -> str:
+    """The status AND what the server said; the body is where the answer lives."""
+    try:
+        body = exc.read()[:300].decode("utf-8", "replace").strip().replace("\n", " ")
+    except Exception:  # noqa: BLE001 - a body we cannot read must not mask the status
+        body = ""
+    return f"HTTP {exc.code} {exc.reason}" + (f" — {body}" if body else "")
+
+
 def runpod(method: str, path: str):
     """One RunPod REST call. Raises on any failure — a call that did not happen
     must never look like an empty answer."""
     key = ssm.get_parameter(Name=RUNPOD_KEY_PARAM, WithDecryption=True)["Parameter"]["Value"]
     req = urllib.request.Request(f"https://rest.runpod.io/v1{path}", method=method,
-                                 headers={"Authorization": f"Bearer {key}"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        body = resp.read()
-        return json.loads(body) if body else None
+                                 headers={"Authorization": f"Bearer {key}", "User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            body = resp.read()
+            return json.loads(body) if body else None
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"RunPod {method} {path}: {http_detail(exc)}") from exc
 
 
 def list_daily_pods() -> list[dict]:
@@ -150,10 +169,21 @@ def reap(now: dt.datetime) -> tuple[list[str], list[str]]:
 
 def url_ok(url: str) -> bool:
     try:
-        with urllib.request.urlopen(urllib.request.Request(url, method="HEAD"), timeout=15) as resp:
+        req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(req, timeout=15) as resp:
             return resp.status == 200
     except Exception:
         return False
+
+
+def a_pod_may_be_running(date: str) -> bool:
+    """True when the day's claim says a pod was created and nothing has reported
+    it finished. S3 is reachable when RunPod is not, so this is what decides
+    whether an unreachable RunPod is an emergency or a nuisance."""
+    claim = read_json(f"daily/{date}/launched.json")
+    if not claim or claim.get("state") != "launched" or not claim.get("pod_id"):
+        return False
+    return read_json(f"daily/{date}/finished.json") is None
 
 
 def audit_day(date: str, prev: str) -> list[str]:
@@ -225,6 +255,7 @@ def handler(event, context):
     prev = (dt.date.fromisoformat(date) - dt.timedelta(days=1)).isoformat()
     problems: list[str] = []
 
+    reaped = True
     try:
         # Reaping first and unconditionally: money is the thing that cannot wait.
         killed, reap_problems = reap(now)
@@ -233,13 +264,16 @@ def handler(event, context):
                                     f"{MAX_POD_MINUTES}-minute limit and still billing:\n  " + "\n  ".join(killed))
         problems += reap_problems
     except Exception as exc:
+        reaped = False
         note = (f"COULD NOT REACH RUNPOD to reap stale pods: {type(exc).__name__}: {exc}. "
                 f"A pod may be billing right now with nothing watching it. "
                 f"Check runpod.io/console/pods by hand.")
-        # The reaper runs every 15 minutes; alerting from it on every failed poll
-        # would send dozens of identical emails during a RunPod outage and train
-        # the reader to ignore them. The daily report carries it instead.
-        if mode == "report":
+        # The reaper runs every 15 minutes; alerting on every failed poll would
+        # send dozens of identical emails during a RunPod outage and train the
+        # reader to ignore them. So it escalates only when the claim says a pod
+        # exists and has not reported finishing — the case where an unreachable
+        # RunPod is actually costing money. Otherwise the daily report carries it.
+        if mode == "report" or a_pod_may_be_running(date):
             problems.append(note)
         else:
             print(note)
@@ -255,6 +289,12 @@ def handler(event, context):
         publish(f"Latent Sky daily run: {len(problems)} problem(s) on {date}",
                 [f"Latent Sky {mode} check, {now:%Y-%m-%d %H:%M}Z"] + problems)
         return {"status": "alerted", "mode": mode, "problems": problems}
+
+    if not reaped:
+        # NOT clean: nothing was checked. Reporting clean here is what let a
+        # two-day RunPod outage look like ninety-six healthy polls (6-8 Sep 2026).
+        print(f"{date} ({mode}): RUNPOD UNREACHABLE — nothing was reaped")
+        return {"status": "runpod-unreachable", "mode": mode, "date": date}
 
     print(f"{date} ({mode}): clean")
     return {"status": "clean", "mode": mode, "date": date}

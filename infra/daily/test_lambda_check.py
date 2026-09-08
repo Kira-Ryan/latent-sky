@@ -104,12 +104,17 @@ def test_a_runpod_outage_never_reports_a_clean_day(monkeypatch):
 
 def test_the_reaper_does_not_email_on_every_failed_poll(monkeypatch):
     """96 identical emails during a RunPod outage would train the reader to ignore
-    the one that matters. The daily report carries it instead."""
+    the one that matters. The daily report carries it instead.
+
+    It reports "runpod-unreachable", not "clean": staying quiet is a choice about
+    email, never a claim that the pods were checked. Reporting clean here is what
+    let the 6-8 Sep 2026 outage look like ninety-six healthy polls."""
     monkeypatch.setattr(lc, "runpod", lambda m, p: (_ for _ in ()).throw(OSError("connection reset")))
+    monkeypatch.setattr(lc, "s3", FakeS3({}))          # no claim: nothing was launched
     sent = []
     monkeypatch.setattr(lc, "publish", lambda s, m: sent.append(s))
     out = lc.handler({"mode": "reap", "date": "2026-09-03"}, None)
-    assert out["status"] == "clean" and sent == []
+    assert out["status"] == "runpod-unreachable" and sent == []
 
 
 def test_the_audits_own_failure_is_itself_an_alert(monkeypatch):
@@ -216,3 +221,70 @@ def test_the_audit_scores_the_day_the_pod_was_told_to_score(monkeypatch):
     monkeypatch.setattr(lc, "url_ok", lambda u: checked.append(u) or True)
     assert lc.audit_day("2026-09-04", "2026-09-03") == []
     assert checked == [f"{lc.SITE_URL}/verification/daily-2026-09-02.html"], "the report link checked must be the scored day's"
+
+
+# ── the 6-8 Sep 2026 outage: 96 polls a day reported clean while blind ────────
+
+def test_the_reaper_names_itself_to_runpod(monkeypatch):
+    """Cloudflare refused "Python-urllib/3.x" with a 1010, so this poll got a
+    bare 403 every fifteen minutes for two days."""
+    seen = {}
+
+    class Resp:
+        def read(self): return b"[]"
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    monkeypatch.setattr(lc.ssm, "get_parameter", lambda **kw: {"Parameter": {"Value": "k"}}, raising=False)
+    monkeypatch.setattr(lc.urllib.request, "urlopen", lambda req, timeout=None: seen.update(req.headers) or Resp())
+    lc.runpod("GET", "/pods")
+    ua = seen.get("User-agent") or seen.get("User-Agent") or ""
+    assert ua and "urllib" not in ua.lower(), f"unnamed client: {seen}"
+
+
+def test_what_runpod_said_reaches_the_operator(monkeypatch):
+    import io
+    err = lc.urllib.error.HTTPError("https://rest.runpod.io/v1/pods", 403, "Forbidden", {}, io.BytesIO(b"error code: 1010"))
+    monkeypatch.setattr(lc.ssm, "get_parameter", lambda **kw: {"Parameter": {"Value": "k"}}, raising=False)
+    monkeypatch.setattr(lc.urllib.request, "urlopen", lambda req, timeout=None: (_ for _ in ()).throw(err))
+    with pytest.raises(RuntimeError, match="1010"):
+        lc.runpod("GET", "/pods")
+
+
+def test_an_unreachable_runpod_is_never_reported_clean(monkeypatch):
+    """The defect this fixes: reap mode printed the failure and returned
+    "clean", so a two-day outage looked like ninety-six healthy polls."""
+    monkeypatch.setattr(lc, "runpod", lambda m, p: (_ for _ in ()).throw(OSError("connection reset")))
+    monkeypatch.setattr(lc, "s3", FakeS3({}))
+    sent = []
+    monkeypatch.setattr(lc, "publish", lambda s, m: sent.append(s))
+    out = lc.handler({"mode": "reap", "date": "2026-09-08"}, None)
+    assert out["status"] == "runpod-unreachable", "an unchecked day must not report clean"
+    assert sent == [], "still no email on every failed poll"
+
+
+def test_an_unreachable_runpod_escalates_when_a_pod_may_be_billing(monkeypatch):
+    """Silence is affordable when nothing was launched. When the claim says a
+    pod exists and nothing has reported it finished, it is not."""
+    import json
+    monkeypatch.setattr(lc, "runpod", lambda m, p: (_ for _ in ()).throw(OSError("connection reset")))
+    monkeypatch.setattr(lc, "s3", FakeS3({
+        "daily/2026-09-08/launched.json": json.dumps({"state": "launched", "pod_id": "p1"}).encode(),
+    }))
+    sent = []
+    monkeypatch.setattr(lc, "publish", lambda s, m: sent.append(s))
+    out = lc.handler({"mode": "reap", "date": "2026-09-08"}, None)
+    assert out["status"] == "alerted" and sent, "a possibly-billing pod must escalate"
+
+
+def test_a_finished_pod_does_not_escalate_from_the_reaper(monkeypatch):
+    import json
+    monkeypatch.setattr(lc, "runpod", lambda m, p: (_ for _ in ()).throw(OSError("connection reset")))
+    monkeypatch.setattr(lc, "s3", FakeS3({
+        "daily/2026-09-08/launched.json": json.dumps({"state": "launched", "pod_id": "p1"}).encode(),
+        "daily/2026-09-08/finished.json": json.dumps({"status": "ok"}).encode(),
+    }))
+    sent = []
+    monkeypatch.setattr(lc, "publish", lambda s, m: sent.append(s))
+    assert lc.handler({"mode": "reap", "date": "2026-09-08"}, None)["status"] == "runpod-unreachable"
+    assert sent == []
