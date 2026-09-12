@@ -11,6 +11,10 @@
  *   2. the catalogue at ?catalogue=<url> (or /data/web/catalogue.json) — the
  *      normal route once more than one event exists. ?event=<id> selects, the
  *      entry flagged `default` decides otherwise.
+ *   2b. ?event=<id> naming a run the catalogue has rolled off — recovered from
+ *      its permanent manifest address and added to the switcher, because the
+ *      verification record links every run ever scored and those links must
+ *      open the run they name.
  *   3. no usable catalogue — fall back to the single /data/web/manifest.json.
  *      loadCatalogue() has already logged why. THE SITE MUST NEVER BREAK
  *      BECAUSE A CATALOGUE IS MISSING: at time of writing the deployed site
@@ -19,6 +23,8 @@
 import { mount } from "svelte";
 import App from "./ui/App.svelte";
 import {
+  archivedDailyManifestUrl,
+  archivedEvent,
   catalogueUrlFromLocation,
   chooseEvent,
   eventIdFromLocation,
@@ -47,7 +53,44 @@ export async function boot(target: HTMLElement): Promise<void> {
     return;
   }
 
-  const event = chooseEvent(catalogue, eventIdFromLocation());
+  const requested = eventIdFromLocation();
+  let event = chooseEvent(catalogue, requested);
+
+  // 2b. A run the catalogue no longer carries. The catalogue is a rolling
+  //     window; the verification record links every run ever scored, and the
+  //     run's data stays in the bucket for good. Without this, following the
+  //     record's link to an older scored run opened the NEWEST run instead,
+  //     silently, and rewrote the address bar to match (seen live, 12 Sep
+  //     2026). Recover it from its own manifest and add it to the switcher, so
+  //     the link opens the run it names and the reader can still navigate.
+  if (requested !== null && event.id !== requested) {
+    const url = archivedDailyManifestUrl(requested, new URL(window.location.href));
+    if (url !== null) {
+      const archived = await loadManifest(url).catch((err: unknown) => {
+        // Not in the archive either: a mistyped or retired id, which is the
+        // visitor's input rather than a fault here. Say so and open the
+        // default, as before.
+        console.warn(`[latent-sky] ?event=${requested} is not in the archive at ${url} either:`, err);
+        return null;
+      });
+      if (archived !== null) {
+        const restored = archivedEvent(requested, url, {
+          // run.init is optional in the schema; the first frame is the same
+          // instant, and it is the fallback lambda_publish.daily_entry uses.
+          init: archived.run.init ?? archived.frameIso[0],
+          stormName: archived.run.stormName,
+          verification: archived.run.verification,
+          hasHero: [...archived.layers.values()].some((l) => l.kind === "hero-fine"),
+        });
+        sky.setCatalogue({ ...catalogue, events: [...catalogue.events, restored] }, restored.id);
+        sky.init(archived);
+        mount(App, { target });
+        return;
+      }
+      event = chooseEvent(catalogue, null);
+    }
+  }
+
   sky.setCatalogue(catalogue, event.id);
   sky.init(await loadManifest(event.manifestUrl));
   // Normalise the address bar to what is actually on screen, so the URL is a

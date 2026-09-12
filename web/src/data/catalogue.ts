@@ -249,6 +249,66 @@ export function chooseEvent(catalogue: Catalogue, requestedId: string | null): C
  * single-event catalogue unless the param is already present (then it is kept
  * accurate rather than left stale).
  */
+/**
+ * The permanent address of a daily run's manifest, or null if the id is not a
+ * daily run.
+ *
+ * The catalogue is a ROLLING WINDOW: it carries the newest DAILY_KEEP runs so
+ * the switcher stays a short list. The verification record is the archive and
+ * links every run ever scored. The two therefore disagree by design, and on
+ * 12 Sep 2026 the disagreement became visible: following the record's link to
+ * the scored 2 Sep run opened the 12 Sep run instead, silently, with the
+ * address bar rewritten to match. A reader was shown one run's page under
+ * another run's link.
+ *
+ * The data itself never moves — daily/<date>/ stays in the bucket for good — so
+ * the run is still there to be opened. This derives that address, which is the
+ * same one lambda_publish.daily_entry writes into the catalogue while the run is
+ * inside the window.
+ */
+export function archivedDailyManifestUrl(id: string, baseUrl: URL): string | null {
+  const match = /^daily-(\d{4})-(\d{2})-(\d{2})$/.exec(id);
+  if (!match) return null;
+  const [, y, m, d] = match;
+  return new URL(`/data/web/daily/${y}-${m}-${d}/manifest.json`, baseUrl).toString();
+}
+
+/**
+ * A switcher entry for a run recovered from the archive, built from that run's
+ * OWN manifest so every word of it is the run's own claim rather than a guess.
+ * The subtitle says where it came from: a reader who followed an old link
+ * should be told the run is older than the published window, not left to infer
+ * it from the date.
+ */
+export function archivedEvent(id: string, manifestUrl: string, run: ArchivedRun): CatalogueEvent {
+  const when = new Date(run.init);
+  const hh = String(when.getUTCHours()).padStart(2, "0");
+  const month = when.toLocaleString("en-GB", { month: "short", timeZone: "UTC" });
+  const name = run.stormName ?? "Daily run";
+  const state =
+    run.verification === "scored" ? "scored against MRMS radar"
+    : run.verification === "pending" ? "not yet scored"
+    : null;
+  return {
+    id,
+    title: `${name} — daily run, ${hh}Z ${when.getUTCDate()} ${month} ${when.getUTCFullYear()}`.slice(0, 60),
+    subtitle: `AI forecast · StormCast, 3 km${state ? ` · ${state}` : ""} · from the archive`.slice(0, 120),
+    manifestUrl,
+    kind: run.hasHero ? "hero" : "global-only",
+    region: "conus",
+    hasHero: run.hasHero,
+    isDefault: false,
+  };
+}
+
+/** Just the fields archivedEvent reads, so it can be tested without a Manifest. */
+export interface ArchivedRun {
+  init: string;
+  stormName?: string;
+  verification?: "pending" | "scored";
+  hasHero: boolean;
+}
+
 export function writeEventToUrl(catalogue: Catalogue, id: string, loc: Location = window.location): void {
   const url = new URL(loc.href);
   if (catalogue.events.length < 2 && !url.searchParams.has("event")) return;

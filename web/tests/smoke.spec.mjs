@@ -68,7 +68,10 @@ import { createServer } from "vite";
 import { chromium } from "playwright-core";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url))); // web/
-const PORT = 8323;
+// Overridable because Windows reserves shifting port ranges for Hyper-V:
+// 8323 fell inside 8241-8340 on this machine on 12 Sep 2026 and the server
+// could not bind (EACCES, with nothing actually listening). CI keeps the default.
+const PORT = Number(process.env.SMOKE_PORT ?? 8323);
 
 const FIXTURES = [
   { name: "with-hero", manifest: "/dev-fixture/manifest.json", hero: true },
@@ -123,12 +126,48 @@ function missingFrameManifests() {
     for (const layer of Object.values(m.layers)) layer.frames = layer.frames.map((f) => prefix + f);
     return JSON.stringify(m);
   };
+  // An archived daily run at the permanent address the app derives, and a
+  // catalogue that has rolled it off — the 12 Sep 2026 live defect, where
+  // following the verification record's link to an older scored run opened the
+  // newest run instead. Frames point back at the real fixture directory so the
+  // run actually renders.
+  const archived = structuredClone(base);
+  archived.run = { ...archived.run, id: "daily-2026-09-02", init: "2026-09-02T12:00:00Z",
+                   stormName: "Central US", verification: "scored",
+                   reportUrl: "/verification/daily-2026-09-02.html" };
+  archived.frames = archived.frames.map((_, i) =>
+    new Date(Date.UTC(2026, 8, 2, 12 + i)).toISOString().replace(".000", ""));
+  for (const layer of Object.values(archived.layers)) {
+    layer.frames = layer.frames.map((f) => "../../../../dev-fixture/" + f);
+    layer.lut = "../../../../dev-fixture/" + layer.lut;
+  }
+  for (const k of ["global", "hero"]) {
+    if (archived.basemap?.[k]) archived.basemap[k] = "../../../../dev-fixture/" + archived.basemap[k];
+  }
+  const rolledOffCatalogue = {
+    schemaVersion: 1,
+    events: [
+      { id: "synthetic-hero", title: "Synthetic vortex (hero pair)", subtitle: "the newest run",
+        manifest: "../dev-fixture/manifest.json", kind: "hero", region: "conus", hasHero: true, default: true },
+      { id: "synthetic-global", title: "Synthetic global reanalysis", subtitle: "another",
+        manifest: "../dev-fixture/manifest-hero-free.json", kind: "global-only", region: "global",
+        hasHero: false, default: false },
+    ],
+  };
+
   const routes = {
     "/dev-fixture/manifest-missing-404.json": derive("../data/web/__no_such_run__/"),
     "/dev-fixture/manifest-missing-spa.json": derive("__no_such_dir__/"),
+    "/data/web/daily/2026-09-02/manifest.json": JSON.stringify(archived),
+    "/dev-fixture/catalogue-rolled-off.json": JSON.stringify(rolledOffCatalogue),
   };
   return {
     name: "latent-sky-missing-frame-fixtures",
+    // "pre", because vite.config's /data middleware ALWAYS answers (404 on a
+    // miss, never next()), so a route under /data registered after it is
+    // unreachable. Without this the archived-run route silently read the real
+    // gitignored data/web/daily/<date>/manifest.json from disk instead.
+    enforce: "pre",
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const body = routes[(req.url ?? "").split("?")[0]];
@@ -890,6 +929,71 @@ async function runStaleLegend() {
   }
 }
 
+/**
+ * An archived run, linked from the verification record after the catalogue has
+ * rolled it off. Until 12 Sep 2026 this opened the NEWEST run instead, rewrote
+ * the address bar to match, and said nothing — a reader following a link to the
+ * run that scored 0.086 was shown a different run's numbers. The run's data
+ * never moves, so it must open as itself.
+ */
+async function runArchivedEvent() {
+  const name = "archived-event";
+  console.log(`\n=== scenario: ${name} (?event= a run the catalogue rolled off) ===`);
+  const check = checker(name);
+  const page = await browser.newPage({ viewport: { width: 1100, height: 750 } });
+  const diag = attachDiagnostics(page);
+  try {
+    await page.goto(
+      `http://localhost:${PORT}/?catalogue=/dev-fixture/catalogue-rolled-off.json&event=daily-2026-09-02&test=1`,
+      { waitUntil: "load" },
+    );
+    await page.waitForFunction(() => globalThis.__latentSky?.ready === true, null, { timeout: 60_000 });
+    const s = await page.evaluate(() => ({
+      active: globalThis.__latentSky.activeEventId,
+      url: location.search,
+      events: (globalThis.__latentSky.events || []).map((e) => e.id),
+      trigger: document.querySelector(".trigger-title")?.textContent?.trim() ?? "",
+      masthead: document.querySelector(".runid")?.textContent.replace(/\s+/g, " ").trim() ?? "",
+      verification: document.querySelector(".verification")?.textContent.replace(/\s+/g, " ").trim() ?? "",
+    }));
+    check(s.active === "daily-2026-09-02", "the archived run is what opened", `active=${s.active}`);
+    check(s.url.includes("event=daily-2026-09-02"), "the address bar still names it", s.url);
+    check(s.events.includes("daily-2026-09-02"), "and it is in the switcher, so the reader can navigate", s.events.join(","));
+    check(/2 Sep(t)? 2026/.test(s.trigger), "the switcher labels it by its own date", s.trigger);
+    check(/02 Sept 2026, 12:00 UTC/.test(s.masthead), "the masthead is the archived run's own", s.masthead);
+    check(/Scored against MRMS radar/.test(s.verification), "and its scored state is its own", s.verification.slice(0, 70));
+    check(diag.pageErrors.length === 0, "zero page errors", diag.pageErrors.slice(0, 2).join(" | "));
+  } catch (err) {
+    console.error(`\n[${name}] SUITE ABORTED:`, err);
+    if (diag.consoleErrors.length) console.error("console errors:", diag.consoleErrors.slice(0, 5));
+    failures.push(`[${name}] suite aborted: ${err}`);
+  } finally {
+    await page.close();
+  }
+}
+
+/** A genuinely unknown id is the visitor's typo, and still opens the default. */
+async function runUnknownEvent() {
+  const name = "unknown-event";
+  console.log(`\n=== scenario: ${name} (?event= nothing that exists anywhere) ===`);
+  const check = checker(name);
+  const page = await browser.newPage({ viewport: { width: 1100, height: 750 } });
+  try {
+    await page.goto(
+      `http://localhost:${PORT}/?catalogue=/dev-fixture/catalogue-rolled-off.json&event=daily-1999-01-01&test=1`,
+      { waitUntil: "load" },
+    );
+    await page.waitForFunction(() => globalThis.__latentSky?.ready === true, null, { timeout: 60_000 });
+    const active = await page.evaluate(() => globalThis.__latentSky.activeEventId);
+    check(active === "synthetic-hero", "a nonexistent run still opens the default", `active=${active}`);
+  } catch (err) {
+    console.error(`\n[${name}] SUITE ABORTED:`, err);
+    failures.push(`[${name}] suite aborted: ${err}`);
+  } finally {
+    await page.close();
+  }
+}
+
 let exitCode = 1;
 try {
   for (const fixture of FIXTURES) {
@@ -903,10 +1007,12 @@ try {
   await runMissingFrames("frames-404", "/dev-fixture/manifest-missing-404.json", /frame fetch failed: 404/);
   await runMissingFrames("frames-spa-fallback", "/dev-fixture/manifest-missing-spa.json", /decod/i);
   await runStaleLegend();
+  await runArchivedEvent();
+  await runUnknownEvent();
   exitCode = failures.length === 0 ? 0 : 1;
   console.log(
     failures.length === 0
-      ? `\nSMOKE TEST PASSED (${FIXTURES.length} manifest fixtures + 8 scenarios)`
+      ? `\nSMOKE TEST PASSED (${FIXTURES.length} manifest fixtures + 10 scenarios)`
       : `\nSMOKE TEST FAILED: ${failures.length} check(s): ${failures.join("; ")}`,
   );
 } finally {
