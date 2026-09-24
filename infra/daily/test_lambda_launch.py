@@ -47,6 +47,10 @@ class FakeS3:
     def generate_presigned_url(self, op, Params, ExpiresIn):
         return f"https://example.invalid/{Params['Key']}?sig=x"
 
+    def list_objects_v2(self, Bucket, Prefix="", ContinuationToken=None):
+        keys = sorted(k for k in self.objects if k.startswith(Prefix))
+        return {"Contents": [{"Key": k} for k in keys], "IsTruncated": False}
+
 
 @pytest.fixture
 def env(monkeypatch):
@@ -348,3 +352,36 @@ def test_a_refused_create_still_leaves_the_day_claimed(env, monkeypatch):
     import json
     claim = json.loads(fake.objects["daily/2026-09-08/launched.json"])
     assert claim["state"] == "launch-failed" and "1010" in claim["error"]
+
+
+# ── the run stops itself when the sample is complete ─────────────────────────
+
+def test_the_run_stops_when_the_evidence_target_is_reached(env, monkeypatch):
+    """The daily run is a sampling engine for a benchmark, not a service. At the
+    target it must stop spending, before claiming the day."""
+    fake, created = env
+    monkeypatch.setattr(ll, "EVIDENCE_TARGET", 3)
+    for d in ("2026-09-01", "2026-09-02", "2026-09-03"):
+        fake.objects[f"daily/{d}/scored.json"] = b"{}"
+    out = ll.handler({"date": "2026-09-08"}, None)
+    assert out["status"] == "concluded" and out["scored_days"] == 3
+    assert created == [], "money was spent after the sample was complete"
+    assert "daily/2026-09-08/launched.json" not in fake.objects, "a concluded day must leave no claim"
+    import json
+    assert json.loads(fake.objects["daily/concluded.json"])["target"] == 3
+
+
+def test_one_short_of_the_target_still_runs(env, monkeypatch):
+    fake, created = env
+    monkeypatch.setattr(ll, "EVIDENCE_TARGET", 3)
+    for d in ("2026-09-01", "2026-09-02"):
+        fake.objects[f"daily/{d}/scored.json"] = b"{}"
+    assert ll.handler({"date": "2026-09-08"}, None)["status"] == "launched"
+    assert created == ["latentsky-daily-2026-09-08"]
+
+
+def test_the_target_is_off_by_default(env):
+    """An unset EVIDENCE_TARGET must never stop a run by accident."""
+    fake, created = env
+    assert ll.EVIDENCE_TARGET == 0
+    assert ll.handler({"date": "2026-09-08"}, None)["status"] == "launched"

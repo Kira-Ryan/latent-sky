@@ -47,6 +47,13 @@ MEMBERS = os.environ.get("MEMBERS", "1")
 CYCLE_HOUR = int(os.environ.get("CYCLE_HOUR", "12"))
 NSTEPS = int(os.environ.get("NSTEPS", "18"))
 SCORING_LOOKBACK_DAYS = int(os.environ.get("SCORING_LOOKBACK_DAYS", "7"))
+# The daily run is not a service; it is a sampling engine for a benchmark, and a
+# benchmark has a size. At EVIDENCE_TARGET scored days it has produced what it was
+# built to produce and stops itself, so the decision to end it is recorded here
+# rather than left to somebody remembering. Counting SCORED days rather than
+# counting down from a date means a missed day postpones the end instead of
+# silently shrinking the sample. 0 disables the stop.
+EVIDENCE_TARGET = int(os.environ.get("EVIDENCE_TARGET", "0"))
 REGION = os.environ.get("AWS_REGION", "us-east-1")
 EXPIRY = 6 * 3600
 
@@ -247,6 +254,37 @@ def plan(now: dt.datetime) -> dict:
     }
 
 
+def scored_days() -> int:
+    """Days whose forecast has been scored and published. One S3 listing."""
+    n, token = 0, None
+    while True:
+        kw = {"Bucket": DATA_BUCKET, "Prefix": "daily/"}
+        if token:
+            kw["ContinuationToken"] = token
+        page = s3.list_objects_v2(**kw)
+        n += sum(1 for o in page.get("Contents", []) if o["Key"].endswith("/scored.json"))
+        if not page.get("IsTruncated"):
+            return n
+        token = page.get("NextContinuationToken")
+
+
+def conclude(count: int, date: str) -> dict:
+    """Record that the run has produced its sample, once, with the numbers."""
+    marker = read_json("daily/concluded.json")
+    if marker is None:
+        marker = {
+            "concluded_on": date,
+            "scored_days": count,
+            "target": EVIDENCE_TARGET,
+            "reason": (f"the daily run was a sampling engine for a {EVIDENCE_TARGET}-day benchmark "
+                       f"and has produced it; the site and the verification record stay up"),
+            "at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        }
+        write_json("daily/concluded.json", marker)
+        print(f"CONCLUDED: {count} scored days reaches the target of {EVIDENCE_TARGET}; no further launches")
+    return marker
+
+
 def pending_scoring(today: dt.date, lookback: int = None) -> tuple[str, dict] | None:
     """The newest earlier day whose forecast exists and has not been scored.
 
@@ -282,6 +320,14 @@ def handler(event, context):
     claim = read_json(marker_key)
     if claim is not None and not force:
         return {"status": "already-claimed", "claim_state": claim.get("state"), **p}
+
+    # The sample is the product. Once it is complete, stop spending — before the
+    # day is claimed, so a concluded run leaves no marker to clean up.
+    if EVIDENCE_TARGET and not force:
+        count = scored_days()
+        if count >= EVIDENCE_TARGET:
+            return {"status": "concluded", "scored_days": count, **conclude(count, p["date"]), **p}
+        print(f"{count} of {EVIDENCE_TARGET} scored days")
 
     missing = inputs_ready(dt.date.fromisoformat(p["date"]), CYCLE_HOUR)
     if missing:

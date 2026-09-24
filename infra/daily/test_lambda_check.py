@@ -288,3 +288,23 @@ def test_a_finished_pod_does_not_escalate_from_the_reaper(monkeypatch):
     monkeypatch.setattr(lc, "publish", lambda s, m: sent.append(s))
     assert lc.handler({"mode": "reap", "date": "2026-09-08"}, None)["status"] == "runpod-unreachable"
     assert sent == []
+
+
+def test_a_concluded_run_is_not_a_missing_run(monkeypatch):
+    """Once the sample is complete the launcher stops. Without this the deadman
+    emails every night for ever about a day that was never meant to happen."""
+    import json
+    monkeypatch.setattr(lc, "s3", FakeS3({
+        "daily/concluded.json": json.dumps({"concluded_on": "2026-10-07", "scored_days": 30}).encode(),
+    }))
+    assert lc.audit_day("2026-10-08", "2026-10-07") == []
+    assert lc.audit_day("2026-11-20", "2026-11-19") == []
+
+
+def test_a_missing_day_before_the_conclusion_still_alerts(monkeypatch):
+    import json
+    monkeypatch.setattr(lc, "s3", FakeS3({
+        "daily/concluded.json": json.dumps({"concluded_on": "2026-10-07", "scored_days": 30}).encode(),
+    }))
+    problems = lc.audit_day("2026-10-01", "2026-09-30")
+    assert len(problems) == 1 and "NO LAUNCH" in problems[0]

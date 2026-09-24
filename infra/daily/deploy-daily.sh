@@ -58,6 +58,10 @@ MEMBERS=${MEMBERS:-1}
 DAILY_KEEP=${DAILY_KEEP:-7}
 CYCLE_HOUR=${CYCLE_HOUR:-12}
 NSTEPS=${NSTEPS:-18}
+# The daily run is a sampling engine for a benchmark, not a service. At this many
+# scored days it has produced what it was built to produce and stops itself,
+# recording daily/concluded.json. Set 0 to run indefinitely.
+EVIDENCE_TARGET=${EVIDENCE_TARGET:-30}
 SITE_URL=${SITE_URL:-https://latent-sky.dev}
 # The hard spend bound. A single-member run takes ~12 min plus a ~5 min image
 # pull; eight members ~30 min. Anything past this is hung, and hung is billed.
@@ -217,7 +221,7 @@ ENV_LAUNCH="$NATIVE_TMP/latentsky-env-launch.json"
 ENV_PUBLISH="$NATIVE_TMP/latentsky-env-publish.json"
 ENV_CHECK="$NATIVE_TMP/latentsky-env-check.json"
 cat > "$ENV_LAUNCH" <<EOF
-{ "Variables": { "DATA_BUCKET": "${DATA_BUCKET}", "IMAGE": "${IMAGE}", "RUNPOD_KEY_PARAM": "${KEY_PARAM}", "MEMBERS": "${MEMBERS}", "CYCLE_HOUR": "${CYCLE_HOUR}", "NSTEPS": "${NSTEPS}", "MAX_POD_MINUTES": "${MAX_POD_MINUTES}" } }
+{ "Variables": { "DATA_BUCKET": "${DATA_BUCKET}", "IMAGE": "${IMAGE}", "RUNPOD_KEY_PARAM": "${KEY_PARAM}", "MEMBERS": "${MEMBERS}", "CYCLE_HOUR": "${CYCLE_HOUR}", "NSTEPS": "${NSTEPS}", "MAX_POD_MINUTES": "${MAX_POD_MINUTES}", "EVIDENCE_TARGET": "${EVIDENCE_TARGET}" } }
 EOF
 cat > "$ENV_PUBLISH" <<EOF
 { "Variables": { "DATA_BUCKET": "${DATA_BUCKET}", "SITE_BUCKET": "${SITE_BUCKET}", "DISTRIBUTION_ID": "${DIST_ID}", "RUNPOD_KEY_PARAM": "${KEY_PARAM}", "DAILY_KEEP": "${DAILY_KEEP}" } }

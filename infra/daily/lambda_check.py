@@ -191,6 +191,14 @@ def audit_day(date: str, prev: str) -> list[str]:
     problems: list[str] = []
     claim = read_json(f"daily/{date}/launched.json")
 
+    # A run that has produced its sample and stopped is not a broken run. The
+    # launcher records that decision in daily/concluded.json; without this the
+    # deadman would email every night for ever about a day that was never
+    # supposed to happen.
+    concluded = read_json("daily/concluded.json")
+    if concluded is not None and date > concluded.get("concluded_on", "9999"):
+        return []
+
     if claim is None:
         problems.append(
             f"{date}: NO LAUNCH. Either the 12Z inputs never appeared on NOAA's buckets inside the "
