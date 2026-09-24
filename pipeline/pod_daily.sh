@@ -82,7 +82,15 @@ CFG=/opt/latentsky/pipeline/configs/event_daily_conus.yaml
 TILES=/opt/latentsky/pipeline/assets/NaturalEarthII
 MEMBERS=${MEMBERS:-1}
 PREV_RC=0
-TODAY_RC=0
+# 255 means "the forecast never finished", NOT success. The trap below fires on
+# every exit including a kill, and a counter that starts at 0 makes a pod killed
+# mid-forecast report itself as ok — which is exactly what happened on 22 Sep
+# 2026 when the RunPod balance ran out during the forecast stage: finished.json
+# said "status: ok, forecast_rc: 0" for a run that produced nothing. The deadman
+# caught it anyway, by noticing no site tar arrived, but a marker that lies is
+# still a marker that lies. PREV_RC may stay 0 because "no previous day to
+# score" really is a success; only the forecast has to prove it ran.
+TODAY_RC=255
 STORES_RC=0
 
 cat > /tmp/put.py <<'PYEOF'
@@ -106,7 +114,12 @@ SHIPPER=$!
 # until the reaper notices.
 finish() {
   local status="ok"
-  [ "$TODAY_RC" -eq 0 ] && [ "$PREV_RC" -eq 0 ] || status="failed"
+  if [ "$TODAY_RC" -eq 255 ]; then
+    # Killed, or died, before the forecast stage set its own return code.
+    status="incomplete"
+  elif [ "$TODAY_RC" -ne 0 ] || [ "$PREV_RC" -ne 0 ]; then
+    status="failed"
+  fi
   kill $SHIPPER 2>/dev/null
   python3 /tmp/put.py /tmp/run.log "$PUT_LOG" || true
   if [ -n "${PUT_FINISHED:-}" ]; then
@@ -242,7 +255,7 @@ if [ $TODAY_RC -eq 0 ]; then
   echo "site upload exit: $TODAY_RC"
 fi
 
-if [ $TODAY_RC -eq 0 ] && [ $PREV_RC -eq 0 ]; then echo ok > /out/DAILY_DONE; else echo failed > /out/DAILY_DONE; fi
+if [ $TODAY_RC -eq 0 ] && [ $PREV_RC -eq 0 ]; then echo ok > /out/DAILY_DONE; elif [ $TODAY_RC -eq 255 ]; then echo incomplete > /out/DAILY_DONE; else echo failed > /out/DAILY_DONE; fi
 if [ $TODAY_RC -eq 0 ] && [ $PREV_RC -eq 0 ]; then
   echo "=== ALL DONE $(date -u +%FT%TZ) ==="
   exit 0
