@@ -308,3 +308,19 @@ def test_a_missing_day_before_the_conclusion_still_alerts(monkeypatch):
     }))
     problems = lc.audit_day("2026-10-01", "2026-09-30")
     assert len(problems) == 1 and "NO LAUNCH" in problems[0]
+
+
+def test_a_day_runpod_refused_all_window_is_reported(monkeypatch):
+    """No pod was created and nothing was spent, but the day produced no
+    forecast — and the alert should say what RunPod actually answered."""
+    import json
+    monkeypatch.setattr(lc, "s3", FakeS3({
+        "daily/2026-09-25/launched.json": json.dumps({
+            "state": "retriable", "attempts": 11,
+            "error": "RunPodRefused: RunPod refused the create (HTTP 500 — There are no instances currently available)",
+        }).encode(),
+    }))
+    problems = lc.audit_day("2026-09-25", "2026-09-24")
+    assert len(problems) == 1
+    assert "11 attempts" in problems[0] and "no instances currently available" in problems[0]
+    assert "Nothing was spent" in problems[0]

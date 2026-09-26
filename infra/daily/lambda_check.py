@@ -214,6 +214,14 @@ def audit_day(date: str, prev: str) -> list[str]:
                         f"reaper covers it if one does. Re-run with force to retry the day.")
     elif state == "launch-failed":
         problems.append(f"{date}: pod creation failed: {claim.get('error')}")
+    elif state == "retriable":
+        # RunPod refused every attempt in the window. No pod was created and
+        # nothing was spent, but the day produced no forecast.
+        problems.append(
+            f"{date}: RunPod refused the create on all {claim.get('attempts', '?')} attempts across the "
+            f"launch window, so no forecast was made. Nothing was spent." + chr(10) +
+            f"Last answer: {claim.get('error')}"
+        )
     elif state != "launched":
         problems.append(f"{date}: unexpected claim state {state!r}")
 

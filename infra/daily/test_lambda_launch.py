@@ -385,3 +385,69 @@ def test_the_target_is_off_by_default(env):
     fake, created = env
     assert ll.EVIDENCE_TARGET == 0
     assert ll.handler({"date": "2026-09-08"}, None)["status"] == "launched"
+
+
+# ── a refusal must not cost the day (25 Sep 2026) ────────────────────────────
+
+def test_a_refusal_leaves_the_day_open_for_the_next_firing(env, monkeypatch):
+    """RunPod answered no, so no pod exists and the window has hours left. On
+    25 Sep 2026 one "no instances currently available" at 16:05Z lost the whole
+    day while three and a half hours of launch window went unused."""
+    fake, created = env
+    monkeypatch.setattr(ll, "create_pod", lambda e, n: (_ for _ in ()).throw(
+        ll.RunPodRefused('RunPod refused the create (HTTP 500 — There are no instances currently available)')))
+    out = ll.handler({"date": "2026-09-25"}, None)
+    assert out["status"] == "refused-retriable" and out["attempts"] == 1
+    import json
+    claim = json.loads(fake.objects["daily/2026-09-25/launched.json"])
+    assert claim["state"] == "retriable" and "no instances" in claim["error"]
+    assert created == []
+
+
+def test_the_next_firing_actually_retries_and_launches(env, monkeypatch):
+    fake, created = env
+    monkeypatch.setattr(ll, "create_pod", lambda e, n: (_ for _ in ()).throw(ll.RunPodRefused("no capacity")))
+    ll.handler({"date": "2026-09-25"}, None)
+    monkeypatch.setattr(ll, "find_pod", lambda name: None)          # capacity came back; no pod yet
+    monkeypatch.setattr(ll, "create_pod", lambda e, n: created.append(n) or {"id": "pod-9", "costPerHr": 2.09})
+    out = ll.handler({"date": "2026-09-25"}, None)
+    assert out["status"] == "launched" and created == ["latentsky-daily-2026-09-25"]
+    import json
+    assert json.loads(fake.objects["daily/2026-09-25/launched.json"])["attempts"] == 1
+
+
+def test_a_retry_never_creates_a_second_pod(env, monkeypatch):
+    """The belt to the braces: the pod name is derived from the date, so a retry
+    asks RunPod whether the day already has one. If it does, adopt it."""
+    fake, created = env
+    monkeypatch.setattr(ll, "create_pod", lambda e, n: (_ for _ in ()).throw(ll.RunPodRefused("500")))
+    ll.handler({"date": "2026-09-25"}, None)
+    monkeypatch.setattr(ll, "find_pod", lambda name: {"id": "pod-ghost", "name": name, "costPerHr": 2.09})
+    out = ll.handler({"date": "2026-09-25"}, None)
+    assert out["status"] == "adopted" and out["pod_id"] == "pod-ghost"
+    assert created == [], "a second pod was created for a day that already had one"
+
+
+def test_a_retry_that_cannot_reach_runpod_fails_closed(env, monkeypatch):
+    """Creating a second pod on a blind guess is the one mistake that costs real
+    money, so a failure to ASK must propagate, never be assumed to mean "none"."""
+    fake, created = env
+    monkeypatch.setattr(ll, "create_pod", lambda e, n: (_ for _ in ()).throw(ll.RunPodRefused("500")))
+    ll.handler({"date": "2026-09-25"}, None)
+    monkeypatch.setattr(ll, "find_pod", lambda name: (_ for _ in ()).throw(OSError("connection reset")))
+    with pytest.raises(OSError):
+        ll.handler({"date": "2026-09-25"}, None)
+    assert created == []
+
+
+def test_a_timeout_still_fails_closed_and_keeps_the_day(env, monkeypatch):
+    """Unchanged and deliberate: a timeout may have created a pod we never heard
+    about, so the day stays claimed and is NOT retried."""
+    fake, created = env
+    monkeypatch.setattr(ll, "create_pod", lambda e, n: (_ for _ in ()).throw(TimeoutError("socket timeout")))
+    with pytest.raises(TimeoutError):
+        ll.handler({"date": "2026-09-25"}, None)
+    import json
+    assert json.loads(fake.objects["daily/2026-09-25/launched.json"])["state"] == "launch-failed"
+    assert ll.handler({"date": "2026-09-25"}, None)["status"] == "already-claimed"
+    assert created == []

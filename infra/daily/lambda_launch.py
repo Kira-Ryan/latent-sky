@@ -11,10 +11,17 @@ Runs every 20 minutes through the afternoon (EventBridge). Each firing:
      read-only GET for yesterday's stores), create the RunPod pod from the daily
      image with those URLs in env, and record the pod id in the claim.
 
-FAIL-CLOSED ON PURPOSE. If the pod creation call fails in a way that might still
-have created a pod (a socket timeout after RunPod accepted it), the claim stays
-and the day is skipped. A missed day costs nothing and the deadman reports it; a
-double launch costs real money on a small prepaid balance.
+FAIL-CLOSED ON PURPOSE, BUT ONLY WHERE IT HAS TO BE. Two kinds of create failure:
+
+  REFUSED  RunPod answered and said no — no balance, no capacity. A response came
+           back, so no pod exists: the claim goes to "retriable" and the next
+           firing in the window tries again, after asking RunPod whether the day
+           already has a pod under its (date-derived) name. Both refusals seen in
+           practice were transient, and on 25 Sep 2026 one of them lost a whole
+           day at 16:05Z with three and a half hours of window left unused.
+  AMBIGUOUS A timeout or a reset MAY have created a pod nobody heard about. The
+           claim STAYS and the day is skipped. A missed day costs nothing and the
+           deadman reports it; a double launch costs real money.
 
 The claim is not a distributed lock and does not need to be: deploy-daily.sh
 pins this function to reserved concurrency 1 with zero async retries, so no two
@@ -68,6 +75,18 @@ RUNPOD_API = "https://rest.runpod.io/v1/pods"
 # or the balance had changed. A named client is also the courteous thing to send
 # to NOAA's buckets, which is why url_exists carries it too.
 USER_AGENT = "latentsky-daily/1.0 (+https://latent-sky.dev)"
+
+
+class RunPodRefused(RuntimeError):
+    """RunPod answered, and the answer was no.
+
+    A response came back, so NO POD WAS CREATED and the day may safely be tried
+    again. That distinguishes it from a timeout, which may have created a pod we
+    never heard about and must stay fail-closed. The two refusals seen in
+    practice are both transient: "Your account balance is too low" (23 Sep 2026)
+    and "There are no instances currently available" (25 Sep 2026) — the second
+    lost a whole day at 16:05Z with three and a half hours of launch window left.
+    """
 
 
 def http_detail(exc: urllib.error.HTTPError) -> str:
@@ -229,7 +248,7 @@ def create_pod(env: dict, name: str) -> dict:
             # created: retrying cannot spend twice. This is the one failure that
             # is safe to retry, and it is the one that took the day out on 7 and
             # 8 Sep 2026 — a single edge 403 killed the whole day.
-            last = RuntimeError(f"RunPod refused the create ({http_detail(exc)})")
+            last = RunPodRefused(f"RunPod refused the create ({http_detail(exc)})")
             print(f"create attempt {attempt}/3: {last}")
             if attempt < 3:
                 time.sleep(2 * attempt)
@@ -237,6 +256,25 @@ def create_pod(env: dict, name: str) -> dict:
         # a pod we never heard about. Those propagate on the first try and the
         # day stays claimed, because spending twice is worse than missing a day.
     raise last
+
+
+def find_pod(name: str) -> dict | None:
+    """The pod for this day, if RunPod already has one under that exact name.
+
+    The belt to the braces: the pod name is derived from the date, so before any
+    RE-attempt this asks RunPod whether the day already has a pod. A refusal
+    means no pod was created, but this does not take that on trust — and a
+    failure to ASK propagates, because creating a second pod on a blind guess is
+    the one mistake that costs real money.
+    """
+    req = urllib.request.Request(RUNPOD_API, method="GET",
+                                 headers={"Authorization": f"Bearer {runpod_key()}",
+                                          "User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        pods = json.load(resp) or []
+    if isinstance(pods, dict):
+        pods = pods.get("data") or []
+    return next((x for x in pods if x.get("name") == name), None)
 
 
 def plan(now: dt.datetime) -> dict:
@@ -318,8 +356,13 @@ def handler(event, context):
     marker_key = f"daily/{p['date']}/launched.json"
 
     claim = read_json(marker_key)
-    if claim is not None and not force:
+    # "retriable" means the last attempt was REFUSED by RunPod — a response came
+    # back, so no pod exists and the next firing in the window should try again.
+    # Every other state blocks, because the day is either in hand or ambiguous.
+    retrying = claim is not None and claim.get("state") == "retriable"
+    if claim is not None and not retrying and not force:
         return {"status": "already-claimed", "claim_state": claim.get("state"), **p}
+    attempts = (claim or {}).get("attempts", 0)
 
     # The sample is the product. Once it is complete, stop spending — before the
     # day is claimed, so a concluded run leaves no marker to clean up.
@@ -346,8 +389,9 @@ def handler(event, context):
         "image": IMAGE,
         "max_pod_minutes": int(os.environ.get("MAX_POD_MINUTES", "45")),
         "claimed_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "attempts": attempts,
     }
-    if not claim_day(marker_key, claim, force):
+    if not claim_day(marker_key, claim, force or retrying):
         print(f"{p['date']}: another invocation claimed the day between our read and our write")
         return {"status": "already-claimed", "claim_state": "claiming", **p}
 
@@ -401,11 +445,38 @@ def handler(event, context):
         for k in ("prev_date", "prev_init", "prev_event_id"):
             claim[k] = None
 
+    pod_name = f"latentsky-daily-{p['date']}"
+    if retrying:
+        already = find_pod(pod_name)      # raises if RunPod cannot be asked — fail closed
+        if already is not None:
+            claim.update({"state": "launched", "pod_id": already.get("id"),
+                          "cost_per_hr": already.get("costPerHr"),
+                          "launched_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+                          "scores_prev": "GET_PREV_STORES" in env,
+                          "adopted": True})
+            write_json(marker_key, claim)
+            print(f"a pod named {pod_name} already exists; adopted rather than creating a second")
+            return {"status": "adopted", **claim}
+
     try:
-        pod = create_pod(env, f"latentsky-daily-{p['date']}")
+        pod = create_pod(env, pod_name)
+    except RunPodRefused as exc:
+        # RunPod answered no, so no pod was created and the day is not spent.
+        # Release it for the next firing in the window rather than losing the day
+        # to a transient shortage — capacity and balance both come back, and on
+        # 25 Sep 2026 three and a half hours of window went unused after one
+        # refusal at 16:05Z.
+        claim.update({"state": "retriable", "attempts": attempts + 1,
+                      "error": f"{type(exc).__name__}: {exc}"[:400],
+                      "last_attempt_at": dt.datetime.now(dt.timezone.utc).isoformat()})
+        write_json(marker_key, claim)
+        print(f"refused (attempt {attempts + 1}); the day stays open for the next firing: {exc}")
+        return {"status": "refused-retriable", "attempts": attempts + 1, **p}
     except Exception as exc:
-        # The claim STAYS. A pod may or may not exist; the reaper kills it by name
-        # within MAX_POD_MINUTES and the deadman reports the day as failed.
+        # Anything else — a timeout, a reset — MAY have created a pod we never
+        # heard about. The claim STAYS: the reaper kills it by name within
+        # MAX_POD_MINUTES and the deadman reports the day as failed. Spending
+        # twice is worse than missing a day.
         claim.update({"state": "launch-failed", "error": f"{type(exc).__name__}: {exc}"[:400]})
         write_json(marker_key, claim)
         raise
