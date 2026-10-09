@@ -19,9 +19,11 @@ the central-US domain; the Gulf and Atlantic corners entirely -999):
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import pathlib
+import warnings
 
 import numpy as np
 from scipy.ndimage import uniform_filter
@@ -298,6 +300,14 @@ def hrrr_on_grid(npz_path: pathlib.Path, grid) -> tuple[np.ndarray, list[str]]:
     return frames, [str(v) for v in m["valid"]]
 
 
+@contextlib.contextmanager
+def _quiet_numpy():
+    """Silence numpy's RuntimeWarnings for an hour known to have no radar."""
+    with warnings.catch_warnings(), np.errstate(invalid="ignore", divide="ignore"):
+        warnings.simplefilter("ignore", RuntimeWarning)
+        yield
+
+
 def score(
     fc: np.ndarray,
     obs: np.ndarray,
@@ -329,27 +339,36 @@ def score(
     }
     for h in range(fc.shape[0]):
         v = np.isfinite(fc[h]) & np.isfinite(obs[h])
-        row = {"lead_h": h, "valid": times[h], "valid_cells": int(v.sum()), "fss": {}, "coverage": {}}
-        for thr in thresholds:
-            f0 = coverage(obs[h], v, thr)
-            entry = {
-                "by_window": [fss(fc[h], obs[h], v, thr, w) for w in windows_px],
-                "obs_base_rate": f0,
-                "fss_useful": 0.5 + f0 / 2.0,
-                "fss_random": f0,
-            }
-            if members is not None:
-                prob = np.mean(members[:, h] >= thr, axis=0)
-                entry["ensemble_by_window"] = [fss_probabilistic(prob, obs[h], v, thr, w) for w in windows_px]
-                entry["member_by_window"] = [
-                    [fss(members[k, h], obs[h], v, thr, w) for w in windows_px] for k in range(members.shape[0])
-                ]
-            row["fss"][str(int(thr))] = entry
-            row["coverage"][str(int(thr))] = {"forecast": coverage(fc[h], v, thr), "observed": f0}
-            if members is not None:
-                row["coverage"][str(int(thr))]["members"] = [coverage(members[k, h], v, thr) for k in range(members.shape[0])]
-        cf, co = centroid(fc[h], v, lat_c, lon_c, 40.0), centroid(obs[h], v, lat_c, lon_c, 40.0)
-        row["centroid_40dbz"] = {"forecast": cf, "observed": co, "separation_km": km_between(cf, co)}
-        row["max_dbz"] = {"forecast": float(np.nanmax(fc[h])), "observed": float(np.nanmax(obs[h]))}
+        # An hour with NO radar at all — an archive gap that fetch_mrms records as
+        # wholly outside coverage. Every statistic below then averages an empty
+        # mask and is NaN by construction, and headline() excludes the hour under
+        # the coverage rule. numpy's "mean of empty slice" warnings say nothing
+        # new for such an hour, so they are silenced for it alone; for every
+        # other hour an empty mask would be a fault and the warnings stay live.
+        no_radar = not np.isfinite(obs[h]).any()
+        row = {"lead_h": h, "valid": times[h], "valid_cells": int(v.sum()), "no_radar": no_radar,
+               "fss": {}, "coverage": {}}
+        with _quiet_numpy() if no_radar else contextlib.nullcontext():
+            for thr in thresholds:
+                f0 = coverage(obs[h], v, thr)
+                entry = {
+                    "by_window": [fss(fc[h], obs[h], v, thr, w) for w in windows_px],
+                    "obs_base_rate": f0,
+                    "fss_useful": 0.5 + f0 / 2.0,
+                    "fss_random": f0,
+                }
+                if members is not None:
+                    prob = np.mean(members[:, h] >= thr, axis=0)
+                    entry["ensemble_by_window"] = [fss_probabilistic(prob, obs[h], v, thr, w) for w in windows_px]
+                    entry["member_by_window"] = [
+                        [fss(members[k, h], obs[h], v, thr, w) for w in windows_px] for k in range(members.shape[0])
+                    ]
+                row["fss"][str(int(thr))] = entry
+                row["coverage"][str(int(thr))] = {"forecast": coverage(fc[h], v, thr), "observed": f0}
+                if members is not None:
+                    row["coverage"][str(int(thr))]["members"] = [coverage(members[k, h], v, thr) for k in range(members.shape[0])]
+            cf, co = centroid(fc[h], v, lat_c, lon_c, 40.0), centroid(obs[h], v, lat_c, lon_c, 40.0)
+            row["centroid_40dbz"] = {"forecast": cf, "observed": co, "separation_km": km_between(cf, co)}
+            row["max_dbz"] = {"forecast": float(np.nanmax(fc[h])), "observed": float(np.nanmax(obs[h]))}
         results["leads"].append(row)
     return results

@@ -9,12 +9,16 @@ on:
       - "web/**"
       - "data/web/**"
       - "schema/**"
+      - "pipeline/tools/fss_report.html"
+      - "data/verification/dixie_2025_pre.fss.json"
       - ".github/workflows/web.yml"
   pull_request:
     paths:
       - "web/**"
       - "data/web/**"
       - "schema/**"
+      - "pipeline/tools/fss_report.html"
+      - "data/verification/dixie_2025_pre.fss.json"
       - ".github/workflows/web.yml"
   workflow_dispatch:
 
@@ -57,3 +61,10 @@ jobs:
         env:
           CHANNEL: chromium
         run: node tests/smoke.spec.mjs
+
+      # The verification report writes its sentences in the browser from the results
+      # it embeds, so what a reader is told is only testable by rendering it.
+      - name: Report test
+        env:
+          CHANNEL: chromium
+        run: node tests/report.spec.mjs

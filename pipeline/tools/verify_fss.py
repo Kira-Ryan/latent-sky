@@ -81,7 +81,14 @@ def main(argv: list[str] | None = None) -> None:
     fc_times = [np.datetime_as_string(init + lead, unit="s") + "Z" for lead in leads]
     if fc_times != obs_times:
         raise SystemExit(f"MRMS frames do not match forecast frames: {obs_times[:2]} vs {fc_times[:2]}")
-    print(f"mrms {obs.shape}; radar coverage {np.isfinite(obs[0]).mean()*100:.1f}% of rect; offsets <= {np.abs(offsets).max():.0f}s")
+    # An hour with no radar file inside the tolerance arrives from fetch_mrms as a
+    # frame wholly outside coverage with a NaN offset. The coverage rule then
+    # excludes it from every aggregate; the hours are named here and in the
+    # results so the report can say which hours had no radar and why.
+    no_radar = [t for t, o in zip(obs_times, offsets) if not np.isfinite(o)]
+    worst_used = float(np.nanmax(np.abs(offsets))) if np.isfinite(offsets).any() else float("nan")
+    print(f"mrms {obs.shape}; radar coverage {np.isfinite(obs[0]).mean()*100:.1f}% of rect; "
+          f"offsets used <= {worst_used:.0f}s" + (f"; NO RADAR at {', '.join(no_radar)}" if no_radar else ""))
 
     # The deterministic run is NOT a member: the members are the --member stores
     # only, so the probability field is what forecast_stormcast.py --members
@@ -141,7 +148,8 @@ def main(argv: list[str] | None = None) -> None:
         "nsteps": len(fc_times) - 1,
         "live_url": args.live_url or (f"https://latent-sky.dev/?event={args.event_id}" if args.event_id else None),
         "scored_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "mrms_worst_offset_s": float(np.abs(offsets).max()),
+        "mrms_worst_offset_s": worst_used,
+        "mrms_missing": no_radar,
     }
     # Reproducibility is only a fact when there were two executions. If the scored
     # "single run" is one of the members — the daily pipeline points --hero-zarr at

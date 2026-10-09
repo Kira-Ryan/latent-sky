@@ -196,10 +196,17 @@ def audit_day(date: str, prev: str) -> list[str]:
     # deadman would email every night for ever about a day that was never
     # supposed to happen.
     concluded = read_json("daily/concluded.json")
-    if concluded is not None and date > concluded.get("concluded_on", "9999"):
-        return []
 
     if claim is None:
+        # A concluded run excuses an ABSENT launch and nothing else. >= and not >:
+        # concluded_on is the day the launcher first declined to launch, so with >
+        # the conclusion day itself reported "NO LAUNCH". And only when there is no
+        # claim: a launch forced after the conclusion is a real run and is audited
+        # in full like any other (found by review, 9 Oct 2026 — the first version of
+        # this returned early for every day on or after the conclusion, so a forced
+        # run that failed would have been skipped in silence).
+        if concluded is not None and date >= concluded.get("concluded_on", "9999"):
+            return []
         problems.append(
             f"{date}: NO LAUNCH. Either the 12Z inputs never appeared on NOAA's buckets inside the "
             f"launch window, or the launcher itself failed. Check the latentsky-daily-launch logs; "

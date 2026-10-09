@@ -71,6 +71,35 @@ def plan_frames(init: datetime, nsteps: int) -> list[dict]:
     return plan
 
 
+# The protocol's matching tolerance (DOCS/Verification-Protocol.md, Matching in time).
+MAX_OFFSET_S = 300
+# MRMS's own "outside radar coverage" sentinel, -999 dBZ, in the half-dBZ int16 this
+# file stores. verify.mrms_on_grid and encode_stormcast resolve it to NaN.
+NO_COVERAGE_HALF_DBZ = -1998
+
+
+def classify(plan: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Split the plan into hours with a matching radar file and hours without.
+
+    An hour whose nearest file is more than MAX_OFFSET_S from its valid time has
+    NO RADAR: it is written as a frame wholly outside coverage, so the scorer's
+    coverage rule excludes it and reports it as undefined. Until 9 Oct 2026 one
+    such hour refused the WHOLE run — on 7 Oct a 94-minute MRMS archive gap
+    (14:28-16:02Z) cost eighteen good hours of verification for the sake of one.
+
+    More than half the hours missing is not a gap but a broken archive, and the
+    run is refused rather than scored on what is left.
+    """
+    gone = [p for p in plan if abs(p["offset_s"]) > MAX_OFFSET_S]
+    used = [p for p in plan if abs(p["offset_s"]) <= MAX_OFFSET_S]
+    if len(gone) > len(plan) // 2:
+        raise SystemExit(
+            f"{len(gone)} of {len(plan)} valid hours have no MRMS file within {MAX_OFFSET_S}s — "
+            f"the archive is broken for this window; refusing to score against it"
+        )
+    return used, gone
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--event-config", type=pathlib.Path, required=True)
@@ -86,17 +115,23 @@ def main(argv: list[str] | None = None) -> None:
     init = datetime.fromisoformat(args.init if args.init is not None else cfg["init"])
     nsteps = int(cfg["nsteps"])
     plan = plan_frames(init, nsteps)
-    worst = max(abs(p["offset_s"]) for p in plan)
-    print(f"{len(plan)} frames from {plan[0]['valid']} to {plan[-1]['valid']}, worst offset {worst:.0f}s")
-    if worst > 300:
-        raise SystemExit(f"nearest MRMS file is {worst:.0f}s from a valid time — refusing to score against it")
+    used, gone = classify(plan)
+    worst = max(abs(p["offset_s"]) for p in used)
+    print(f"{len(plan)} frames from {plan[0]['valid']} to {plan[-1]['valid']}, worst offset used {worst:.0f}s")
+    for p in gone:
+        print(f"  +{p['lead']:2d}h {p['valid']}  NO RADAR: the nearest file is {p['offset_s']:+.0f}s away; "
+              f"recorded as outside coverage, so the hour is reported as undefined, not scored")
 
     s, n, w, e = args.box
     rows = np.where((MRMS_LAT >= s) & (MRMS_LAT <= n))[0]
     cols = np.where((MRMS_LON >= w) & (MRMS_LON <= e))[0]
 
+    missing = {p["lead"] for p in gone}
     frames, t0 = [], time.time()
     for p in plan:
+        if p["lead"] in missing:
+            frames.append(np.full((len(rows), len(cols)), NO_COVERAGE_HALF_DBZ, dtype=np.int16))
+            continue
         raw = urllib.request.urlopen(f"{BUCKET}/{p['key']}", timeout=180).read()
         h = eccodes.codes_new_from_message(gzip.decompress(raw))
         ni, nj = eccodes.codes_get(h, "Ni"), eccodes.codes_get(h, "Nj")
@@ -117,8 +152,10 @@ def main(argv: list[str] | None = None) -> None:
         lat=MRMS_LAT[rows].astype(np.float32),
         lon=MRMS_LON[cols].astype(np.float32),
         valid=np.array([p["valid"] for p in plan]),
-        offset_s=np.array([p["offset_s"] for p in plan]),
-        keys=np.array([p["key"] for p in plan]),
+        # NaN for an hour with no file: no offset was used, so none is recorded.
+        offset_s=np.array([np.nan if p["lead"] in missing else p["offset_s"] for p in plan]),
+        keys=np.array(["" if p["lead"] in missing else p["key"] for p in plan]),
+        missing=np.array([p["lead"] in missing for p in plan]),
     )
     print(f"wrote {args.out}: {np.stack(frames).shape} int16, {args.out.stat().st_size / 1e6:.1f} MB")
 

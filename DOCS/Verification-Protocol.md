@@ -12,7 +12,9 @@ Both fields are placed on the display grid, the grid the site renders, so that w
 
 ## Matching in time
 
-Each forecast hour is matched to the MRMS file nearest to its valid time. A match is refused if the nearest file is more than 300 seconds away, and the worst offset used is recorded in the results. A run whose forecast times do not equal the observation times is not scored.
+Each forecast hour is matched to the MRMS file nearest to its valid time. A match is refused if the nearest file is more than 300 seconds away. That hour then has no radar: it is treated as outside radar coverage, so the coverage rule below makes it undefined, and it is excluded from every aggregate and named in the results and the report. The worst offset of the files actually used is recorded in the results.
+
+If more than half the hours of a run have no matching file, the archive is treated as broken for that window and the run is not scored. A run whose forecast times do not equal the observation times is not scored.
 
 ## The score
 
@@ -78,5 +80,6 @@ The run for a day is scored the next day, once the radar for its whole window ex
 
 ## Version history
 
+- **Version 2, clarified 9 October 2026.** The text said that a match more than 300 seconds away is refused, but not what then happens to the run, and the implementation refused the whole run. That path was first exercised on 7 October 2026, when the MRMS archive had no file from 14:28 to 16:02 UTC, and it discarded eighteen hours that had radar for the sake of the one, 15:00 UTC, that did not. A refused match now makes that one hour undefined under the coverage rule, which already excluded an hour without radar. The more-than-half rule above was added at the same time, so that a broken archive is still refused rather than scored on what is left. No score already published changes, because a run with any refused match was never scored. The 7 October run was scored on 9 October under this clarification, a day later than next-day scoring, with 15:00 UTC reported as having no radar.
 - **Version 2, from 7 September 2026.** The headline is the mean FSS over scorable hours against the mean useful line. Hours with undefined FSS or radar coverage under half the grid are excluded and reported. Radar persistence and same-cycle HRRR are scored as comparators. Results already published under version 1 were rescored under version 2 on 6 September 2026; their reports and manifests carry the version 2 figures and this note, and the comparators were added to them at the same time from the archived radar and HRRR files.
 - **Version 1, 4 to 6 September 2026.** The headline was the smallest neighbourhood at which at least one post-spin-up hour cleared the useful line, with the count of such hours. It counted undefined hours as scored and had no coverage floor.

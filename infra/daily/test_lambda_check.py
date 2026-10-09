@@ -324,3 +324,27 @@ def test_a_day_runpod_refused_all_window_is_reported(monkeypatch):
     assert len(problems) == 1
     assert "11 attempts" in problems[0] and "no instances currently available" in problems[0]
     assert "Nothing was spent" in problems[0]
+
+
+def test_the_conclusion_day_itself_is_not_a_missing_launch(monkeypatch):
+    """The boundary the first two tests skipped. concluded_on is the day the
+    launcher first declined to launch, so that day must not alert either."""
+    import json
+    monkeypatch.setattr(lc, "s3", FakeS3({
+        "daily/concluded.json": json.dumps({"concluded_on": "2026-10-09", "scored_days": 30}).encode(),
+    }))
+    assert lc.audit_day("2026-10-09", "2026-10-08") == []
+
+
+def test_a_forced_launch_after_the_conclusion_is_still_audited(monkeypatch):
+    """Found by review: the conclusion exemption returned early for every day on
+    or after it, so a launch forced after the conclusion that then failed was
+    skipped in silence. It must only excuse an ABSENT launch."""
+    import json
+    monkeypatch.setattr(lc, "s3", FakeS3({
+        "daily/concluded.json": json.dumps({"concluded_on": "2026-10-09", "scored_days": 30}).encode(),
+        "daily/2026-10-09/launched.json": json.dumps({"state": "launched", "pod_id": "p9", "launched_at": "t"}).encode(),
+        "daily/2026-10-09/run.log": b"FATAL: something broke\n",
+    }))
+    problems = lc.audit_day("2026-10-09", "2026-10-08")
+    assert any("no site tar" in p and "FATAL" in p for p in problems), problems

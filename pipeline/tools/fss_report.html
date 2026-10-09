@@ -199,7 +199,7 @@
   <h2>Method</h2>
   <div class="method"><dl>
     <dt>Forecast</dt><dd>NVIDIA StormCast v1 (Apache-2.0 checkpoint) via earth2studio 0.17.0. HRRR analysis initial conditions at <span id="m-init">18Z</span>, GFS_FX conditioning at every hourly step, <span id="m-real">one realisation, seed fixed</span>.</dd>
-    <dt>Observation</dt><dd>NOAA MRMS <code>MergedReflectivityQCComposite_00.50</code> from <code>noaa-mrms-pds</code>, the file nearest each top of the hour. Worst time offset <span id="m-offset">43</span> seconds.</dd>
+    <dt>Observation</dt><dd>NOAA MRMS <code>MergedReflectivityQCComposite_00.50</code> from <code>noaa-mrms-pds</code>, the file nearest each top of the hour. Worst time offset <span id="m-offset">43</span> seconds.<span id="m-missing"></span></dd>
     <dt>Grid</dt><dd>Both fields on the same <span id="m-grid">884&times;661</span> equirectangular grid the site renders, <span id="m-px">2.39</span> km per pixel, rebuilt with the encoder's own rule. Forecast regridded nearest-neighbour from its 512&times;640 curvilinear grid; MRMS from 0.01&deg; by nearest cell.</dd>
     <dt>Masking</dt><dd>MRMS <code>-999</code> (outside radar coverage) excluded; <code>-99</code> (coverage, no echo) counted as 0 dBZ. Forecast pixels outside the curvilinear footprint excluded. The sentinel meaning was established empirically: zero <code>-999</code> cells inside the domain, and the Gulf and Atlantic corners entirely <code>-999</code>.</dd>
     <dt>FSS</dt><dd>Roberts and Lean 2008. Binary exceedance at 20, 30 and 40 dBZ; square neighbourhoods of 1, 5, 11, 21 and 41 pixels (2, 12, 26, 50 and 98 km); FSS = 1 &minus; MSE(P<sub>f</sub>, P<sub>o</sub>) / (mean P<sub>f</sub><sup>2</sup> + mean P<sub>o</sub><sup>2</sup>) over valid cells. Cells outside the mask are zero in both fields before filtering, so the mask edge neither creates nor absorbs neighbourhood mass. Self-tested: FSS(f, f) = 1, FSS(f, 0) = 0, non-decreasing with scale.</dd>
@@ -254,10 +254,18 @@ const navRun = document.getElementById("nav-run");
 navRun.href = EV.live_url || "/";
 navRun.textContent = EV.live_url ? "Open this run on the globe" : "Open the globe";
 
+// Initiation: the first hour each field covers 0.1% of the domain at 40 dBZ. It is
+// said only as far as the radar allows. Coverage is measured inside the radar mask,
+// so an hour with no radar has none in EITHER field, and a gap before the first hour
+// found makes that hour only the first one SEEN: the onset may have fallen in the
+// gap. And one field without the other is a false alarm or a miss, never "no
+// storms" (until 9 Oct 2026 five daily reports called a forecast-only day quiet).
 function firstLead(pred) { for (const r of L) if (pred(r)) return r; return null; }
 const obsOn = firstLead(r => r.coverage["40"].observed >= 0.001);
 const fcOn  = firstLead(r => r.coverage["40"].forecast >= 0.001);
-const dtInit = (obsOn && fcOn) ? Math.abs(obsOn.lead_h - fcOn.lead_h) : null;
+const gapsBefore = (on) => on ? L.filter(r => r.no_radar && r.lead_h < on.lead_h) : [];
+const obsHidden = gapsBefore(obsOn).length > 0, fcHidden = gapsBefore(fcOn).length > 0;
+const dtInit = (obsOn && fcOn && !obsHidden && !fcHidden) ? Math.abs(obsOn.lead_h - fcOn.lead_h) : null;
 const post = L.filter(r => r.lead_h >= 2);
 // Rule mean-v2 (see /verification/protocol.html), the same rule verify.headline()
 // applies, so this page and the globe agree by construction. An hour is scorable
@@ -285,22 +293,60 @@ const u40 = usefulAt("40"), u20 = usefulAt("20");
 const usefulScale = u40.km, usefulHours = u40.hours;
 const LARGEST = Math.round(KM[KM.length - 1]);
 const hours50 = post.filter(r => r.fss["40"].by_window[3] >= r.fss["40"].fss_useful).length;
-const late = L.filter(r => r.lead_h >= 5);
-const dInt = late.reduce((s, r) => s + (r.max_dbz.forecast - r.max_dbz.observed), 0) / late.length;
+// Hours with radar. A radar gap (r.no_radar) is NaN in every observed field and
+// one NaN poisons a whole sum, which the sentences below would then read as a
+// confident claim. Every aggregate on this page runs over these rows only.
+const RL = L.filter(r => !r.no_radar);
+const gapIn = (rows) => rows.length - rows.filter(r => !r.no_radar).length;
+const late = RL.filter(r => r.lead_h >= 5);
+const dInt = late.length ? late.reduce((s, r) => s + (r.max_dbz.forecast - r.max_dbz.observed), 0) / late.length : null;
 const withSep = L.filter(r => r.lead_h >= 4 && r.lead_h <= 14 && r.centroid_40dbz.separation_km != null);
 const active = withSep.map(r => r.centroid_40dbz.separation_km).sort((a, b) => a - b);
 const medSep = active.length ? active[Math.floor(active.length / 2)] : null;
 const activeRange = withSep.length ? `${utc(withSep[0])} to ${utc(withSep[withSep.length - 1])}` : "";
 const ratio = (rows, thr) => { const o = rows.reduce((s, r) => s + r.coverage[thr].observed, 0); return o > 0 ? rows.reduce((s, r) => s + r.coverage[thr].forecast, 0) / o : null; };
-const ratio40 = ratio(L.filter(r => r.lead_h >= 11), "40");
-const ratio20 = ratio(L.filter(r => r.lead_h >= 4 && r.lead_h <= 14), "20");
+const ratio40 = ratio(RL.filter(r => r.lead_h >= 11), "40");
+const ratio20 = ratio(RL.filter(r => r.lead_h >= 4 && r.lead_h <= 14), "20");
+// Said beside a figure whenever a gap fell inside its window, so the window is not
+// silently narrower than the sentence says.
+const gapNote = (rows) => { const n = gapIn(rows); return n ? ` (${n} hour${n === 1 ? "" : "s"} with no radar left out)` : ""; };
 const times = (v) => (v == null ? "–" : fmt(v, v >= 10 ? 0 : 1) + "×");
+function initiation() {
+  const gapsAt = (on) => gapsBefore(on).map(utc).join(", ");
+  if (!obsOn && !fcOn) return {
+    v: "no storms",
+    tile: `Neither field reached 0.1% of the domain at 40 dBZ in this window${gapNote(L)}, so there is no initiation to time.`,
+    reading: `Neither the radar nor the forecast reached 0.1% of the domain at 40 dBZ in this window${gapNote(L)}: a quiet day for strong convection, and nothing to time.`,
+  };
+  if (!obsOn || !fcOn) {
+    const on = obsOn || fcOn, [one, other] = obsOn ? ["radar", "forecast"] : ["forecast", "radar"];
+    const when = utc(on) + (gapsBefore(on).length ? ` (no radar at ${gapsAt(on)}, so possibly earlier)` : "");
+    const verdict = obsOn ? "observed and not forecast: a miss" : "forecast and not observed: a false alarm";
+    return {
+      v: `${one} only`,
+      tile: `The ${one} first exceeds 0.1% of the domain at 40 dBZ at ${when}; the ${other} never does${gapNote(L)}. Strong convection on that scale was ${verdict} at this threshold.`,
+      reading: `The ${one} first reached 0.1% of the domain at 40 dBZ at ${when}; the ${other} never did${gapNote(L)}. Strong convection on that scale was ${verdict} at this threshold, so there is no initiation to compare.`,
+    };
+  }
+  if (obsHidden || fcHidden) {
+    const which = obsHidden && fcHidden ? "either onset" : obsHidden ? "the radar's onset" : "the forecast's onset";
+    const gaps = gapsAt(obsOn.lead_h > fcOn.lead_h ? obsOn : fcOn);
+    return {
+      v: "not known",
+      tile: `Both fields are first seen above 0.1% of the domain at 40 dBZ at ${utc(obsOn)} (observed) and ${utc(fcOn)} (forecast), but there was no radar at ${gaps}, so ${which} may have been earlier.`,
+      reading: `The radar is first seen with strong cores (0.1% of the domain at 40 dBZ) at ${utc(obsOn)} and the forecast at ${utc(fcOn)}, but there was no radar at ${gaps}, so ${which} may have fallen in the gap and no timing is claimed.`,
+    };
+  }
+  return {
+    v: dtInit === 0 ? "same hour" : "within " + dtInit + " h",
+    tile: "Both fields first exceed 0.1% of the domain at 40 dBZ at " + utc(obsOn) + " (observed) and " + utc(fcOn) + " (forecast)." + (DIXIE ? " First SPC tornado report: 22Z." : ""),
+    reading: `The radar first showed strong cores (0.1% of the domain at 40 dBZ) at ${utc(obsOn)}; the forecast at ${utc(fcOn)}, ${dtInit === 0 ? "the same hour" : `${dtInit} h ${fcOn.lead_h < obsOn.lead_h ? "early" : "late"}`}.`,
+  };
+}
+const init = initiation();
 
 document.getElementById("tiles").innerHTML = [
-  ["Initiation timing", dtInit == null ? "no storms" : (dtInit === 0 ? "same hour" : "within " + dtInit + " h"),
-   dtInit == null
-     ? "Neither field reached 0.1% of the domain at 40 dBZ in this window, so there is no initiation to time."
-     : "Both fields first exceed 0.1% of the domain at 40 dBZ at " + utc(obsOn) + " (observed) and " + utc(fcOn) + " (forecast)." + (DIXIE ? " First SPC tornado report: 22Z." : "")],
+  ["Initiation timing", init.v, init.tile],
   ["Useful placement at 40 dBZ", u40.noEcho ? "no echo" : usefulScale == null ? "below line" : "≈" + Math.round(usefulScale) + " km",
    u40.noEcho
      ? "No post-spin-up hour had 40 dBZ mass in forecast or radar with adequate radar coverage; nothing to score."
@@ -309,7 +355,7 @@ document.getElementById("tiles").innerHTML = [
        : `The smallest neighbourhood at which the mean FSS (${fmt(u40.mean, 2)}) reaches the useful line (${fmt(u40.line, 2)}); ${u40.hours} of ${u40.rows.length} hours above it`)
      + (hours50 > 0 ? `. At 50 km, ${hours50} h above the line.` : ". At 50 km and below, no hour above the line.")],
   ["Core intensity", (dInt >= 0 ? "+" : "") + fmt(dInt, 1) + " dBZ",
-   "Mean forecast maximum minus observed maximum, +5 h onward. " + (dInt > 2 ? "The strongest forecast cores are hotter than the radar sees." : dInt < -2 ? "The forecast's strongest cores are weaker than the radar's." : "Peak intensity is about right.")],
+   "Mean forecast maximum minus observed maximum, +5 h onward" + gapNote(L.filter(r => r.lead_h >= 5)) + ". " + (dInt == null ? "No hour in that window had radar to compare against." : dInt > 2 ? "The strongest forecast cores are hotter than the radar sees." : dInt < -2 ? "The forecast's strongest cores are weaker than the radar's." : "Peak intensity is about right.")],
   ["Storm-mass offset", medSep == null ? "n/a" : Math.round(medSep) + " km",
    medSep == null
      ? "Too few hours had 40 dBZ mass in both fields to place centroids."
@@ -324,9 +370,7 @@ const readingDixie = `
 
 // The generic reading says only what the numbers support, in the same order.
 const readingGeneric = `
-<p><strong>Timing.</strong> ${dtInit == null
-  ? "Neither the radar nor the forecast reached 0.1% of the domain at 40 dBZ in this window: a quiet day for strong convection, and nothing to time."
-  : `The radar first showed strong cores (0.1% of the domain at 40 dBZ) at ${utc(obsOn)}; the forecast at ${utc(fcOn)}, ${dtInit === 0 ? "the same hour" : `${dtInit} h ${fcOn.lead_h < obsOn.lead_h ? "early" : "late"}`}.`}</p>
+<p><strong>Timing.</strong> ${init.reading}</p>
 <p><strong>Placement.</strong> ${u40.noEcho
   ? `At 40 dBZ there was nothing to score: no post-spin-up hour had 40 dBZ mass in forecast or radar with adequate coverage.`
   : u40.km
@@ -335,8 +379,9 @@ const readingGeneric = `
   ${u20.noEcho ? "" : u20.km ? `At 20 dBZ, where the question is whether there is precipitation here at all, the mean reaches the line from ${Math.round(u20.km)} km, ${u20.hours} of ${u20.rows.length} hours above it.` : `At 20 dBZ the mean does not reach the line at any scale either (${fmt(u20.mean, 2)} against ${fmt(u20.line, 2)} at ${LARGEST} km).`}
   At 2 km the score is near zero whatever the day, which is expected and is why gridpoint verification of a 3 km field is the wrong tool.</p>
 <p><strong>Intensity and footprint.</strong> ${ratio40 == null
-  ? "The radar had no 40 dBZ coverage from +11 h on, so there is no coverage ratio to report at that threshold."
-  : `Above 40 dBZ the forecast covers ${times(ratio40)} the observed area from +11 h on, and its peak values run ${dInt >= 0 ? "+" : ""}${fmt(dInt, 0)} dBZ against the radar.`}
+  ? `The radar had no 40 dBZ coverage from +11 h on${gapNote(L.filter(r => r.lead_h >= 11))}, so there is no coverage ratio to report at that threshold.`
+  : `Above 40 dBZ the forecast covers ${times(ratio40)} the observed area from +11 h on${gapNote(L.filter(r => r.lead_h >= 11))}` +
+    (dInt == null ? "." : `, and its peak values run ${dInt >= 0 ? "+" : ""}${fmt(dInt, 0)} dBZ against the radar.`)}
   ${ratio20 == null ? "" : `Above 20 dBZ it covers ${times(ratio20)} the observed area through the active phase.`}
   ${ratio40 != null && ratio20 != null && ratio40 > 1.2 && ratio20 < 0.9 ? "Too many hot cores and too little of the broad, moderate echo around them: the too-cellular signature convection-allowing models, physics-based or learned, are known for." : ""}</p>
 <p><strong>Storm mass.</strong> ${medSep == null
@@ -400,6 +445,12 @@ function lineChart(hostId, { series, yMax, yTicks, yFmt, baseline, annotate, ban
   }
   for (const s of series) {
     svg.appendChild(svgEl("path", { d: pathOf(s.values), fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-dasharray": s.dash || "none" }));
+    // pathOf breaks at undefined values, so a defined hour between two undefined
+    // ones has no segment and would not be drawn at all. It gets a dot instead.
+    s.values.forEach((v, i) => {
+      if (Number.isFinite(v) && !Number.isFinite(s.values[i - 1]) && !Number.isFinite(s.values[i + 1]))
+        svg.appendChild(svgEl("circle", { class: "lone", cx: x(i), cy: y(v), r: 2.5, fill: s.color }));
+    });
     const last = s.values[n - 1];
     if (Number.isFinite(last)) {
       const lx = x(n - 1), ly = y(last);
@@ -476,10 +527,17 @@ if (BASE) {
 }
 
 function covChart(id, thr, yMax, ticks) {
+  const fc = L.map(r => r.coverage[thr].forecast * 100), ob = L.map(r => r.coverage[thr].observed * 100);
+  // The axis was sized for Dixie. A wetter day extends it by whole tick steps, so
+  // its largest value is on the chart instead of drawn off the top (four daily
+  // runs to 9 Oct 2026 passed 10% at 20 dBZ, one reaching 17.9%).
+  const top = Math.max(0, ...fc.filter(Number.isFinite), ...ob.filter(Number.isFinite));
+  const step = ticks[1] - ticks[0];
+  while (top > yMax) { yMax += step; ticks = [...ticks, yMax]; }
   lineChart(id, {
     series: [
-      { name: "forecast", color: "var(--fc)", values: L.map(r => r.coverage[thr].forecast * 100), dy: -8 },
-      { name: "observed", color: "var(--obs)", values: L.map(r => r.coverage[thr].observed * 100), dy: 8 },
+      { name: "forecast", color: "var(--fc)", values: fc, dy: -8 },
+      { name: "observed", color: "var(--obs)", values: ob, dy: 8 },
     ],
     yMax, yTicks: ticks, yFmt: v => v + "%", height: 260, width: 430,
     tip: r => `<div class="t">+${r.lead_h} h · ${utc(r)}</div><div class="row"><span><i class="sw" style="background:var(--fc)"></i>forecast</span><span>${fmt(r.coverage[thr].forecast * 100)}%</span></div><div class="row"><span><i class="sw" style="background:var(--obs)"></i>observed</span><span>${fmt(r.coverage[thr].observed * 100)}%</span></div>`,
@@ -488,9 +546,17 @@ function covChart(id, thr, yMax, ticks) {
 covChart("c-cov40", "40", 1.5, [0, 0.5, 1, 1.5]);
 covChart("c-cov20", "20", 10, [0, 2.5, 5, 7.5, 10]);
 
+// Separation is undefined in an hour without 40 dBZ cells in both fields, or with
+// no radar at all. Such an hour is a break in the line: plotted as 0 km it read as
+// perfect placement. The axis was fixed at 360 km for Dixie (341 at most); daily
+// runs drift past 1,000 km, which it drew off the top, so it now reaches the data.
+const sepKm = L.map(r => r.centroid_40dbz.separation_km ?? NaN);
+const sepMax = Math.max(0, ...sepKm.filter(Number.isFinite));
+const sepTop = sepMax <= 360 ? 360 : sepMax * 1.1;
+const sepStep = sepTop <= 600 ? 100 : sepTop <= 1500 ? 250 : 500;
 lineChart("c-sep", {
-  series: [{ name: "separation", color: "var(--accent)", values: L.map(r => r.centroid_40dbz.separation_km ?? 0) }],
-  yMax: 360, yTicks: [0, 100, 200, 300], yFmt: v => v + " km", height: 240, annotate: true,
+  series: [{ name: "separation", color: "var(--accent)", values: sepKm }],
+  yMax: sepTop, yTicks: Array.from({ length: Math.ceil(sepTop / sepStep) }, (_, i) => i * sepStep), yFmt: v => v + " km", height: 240, annotate: true,
   tip: r => { const c = r.centroid_40dbz; const f = c.forecast, o = c.observed;
     return `<div class="t">+${r.lead_h} h · ${utc(r)}</div><div class="row"><span>separation</span><span>${c.separation_km == null ? "–" : Math.round(c.separation_km) + " km"}</span></div>` +
       (f ? `<div class="row"><span><i class="sw" style="background:var(--fc)"></i>forecast</span><span>${f.lat.toFixed(2)}N ${Math.abs(f.lon).toFixed(2)}W</span></div>` : "") +
@@ -585,15 +651,23 @@ if (M) {
 
 const T = document.getElementById("tbl");
 T.innerHTML = `<thead><tr><th>valid</th><th>obs ≥40</th><th>fc ≥40</th>${WIN.map(w => `<th>FSS ${Math.round(KM[w])} km</th>`).join("")}<th>useful</th>${M ? ENS_WIN.map(w => `<th>ens ${Math.round(KM[w])} km</th>`).join("") : ""}<th>sep km</th><th>max fc/obs</th></tr></thead>` +
-  `<tbody>${L.map(r => { const s = r.fss["40"]; return `<tr><td>+${r.lead_h} h · ${utc(r)}</td><td>${fmt(r.coverage["40"].observed * 100)}%</td><td>${fmt(r.coverage["40"].forecast * 100)}%</td>` +
+  `<tbody>${L.map(r => { const s = r.fss["40"]; return `<tr><td>+${r.lead_h} h · ${utc(r)}${r.no_radar ? " · no radar" : ""}</td><td>${fmt(r.coverage["40"].observed * 100)}%</td><td>${fmt(r.coverage["40"].forecast * 100)}%</td>` +
     WIN.map(w => { const v = s.by_window[w]; return `<td class="${v >= s.fss_useful ? "use" : ""}">${fmt(v, 3)}</td>`; }).join("") +
     `<td>${fmt(s.fss_useful, 3)}</td>` +
     (M ? ENS_WIN.map(w => { const v = s.ensemble_by_window[w]; return `<td class="${v >= s.fss_useful ? "use" : ""}">${fmt(v, 3)}</td>`; }).join("") : "") +
-    `<td>${r.centroid_40dbz.separation_km == null ? "–" : Math.round(r.centroid_40dbz.separation_km)}</td><td>${Math.round(r.max_dbz.forecast)}/${Math.round(r.max_dbz.observed)}</td></tr>`; }).join("")}</tbody>`;
+    `<td>${r.centroid_40dbz.separation_km == null ? "–" : Math.round(r.centroid_40dbz.separation_km)}</td><td>${Math.round(r.max_dbz.forecast)}/${Number.isFinite(r.max_dbz.observed) ? Math.round(r.max_dbz.observed) : "–"}</td></tr>`; }).join("")}</tbody>`;
 document.getElementById("m-init").textContent = initH;
 document.getElementById("m-grid").innerHTML = `${R.grid.size[0]}&times;${R.grid.size[1]}`;
 document.getElementById("m-px").textContent = R.grid.km_per_px.toFixed(2);
 if (EV.mrms_worst_offset_s != null) document.getElementById("m-offset").textContent = Math.round(EV.mrms_worst_offset_s);
+// An hour with no radar file inside the five-minute tolerance is outside coverage
+// and is not scored; say which, rather than leaving a row of dashes to explain itself.
+if (EV.mrms_missing && EV.mrms_missing.length) {
+  const hh = EV.mrms_missing.map(t => t.slice(11, 16) + "Z").join(", ");
+  document.getElementById("m-missing").textContent =
+    ` No radar file within five minutes of ${hh}, an archive gap: ` +
+    `${EV.mrms_missing.length === 1 ? "that hour is" : "those hours are"} treated as outside coverage and not scored.`;
+}
 const scoredOn = EV.scored_at ? `Scored ${longDate(new Date(EV.scored_at))}` : (M ? "Scored 31 August 2026, ensemble added 2 September 2026" : "Scored 31 August 2026");
 document.getElementById("stamp").textContent = scoredOn + " · teal cells clear the useful line";
 </script>
